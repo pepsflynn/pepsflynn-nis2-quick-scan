@@ -16,9 +16,9 @@ verification_codes = {}
 SENDGRID_SERVER = "smtp.sendgrid.net"
 SENDGRID_PORT = 587
 SENDGRID_USERNAME = "apikey"
-SENDGRID_API_KEY = "LA_TUA_API_KEY_SENDGRID"
-SENDGRID_FROM_EMAIL = "gfarigu@gmail.com"
-SENDGRID_FROM_NAME = "NIS2 Compliance Tool"
+SENDGRID_API_KEY = "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"
+SENDGRID_FROM_EMAIL = "giuseppe.farigu@ichnobyte.it"
+SENDGRID_FROM_NAME = "Support NIS2 Tool"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
