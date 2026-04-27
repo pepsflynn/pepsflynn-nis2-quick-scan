@@ -13,13 +13,6 @@ app.secret_key = 'nis2-quick-scan-secret-key-change-me'
 
 verification_codes = {}
 
-SENDGRID_SERVER = "smtp.sendgrid.net"
-SENDGRID_PORT = 587
-SENDGRID_USERNAME = "apikey"
-SENDGRID_API_KEY = "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"
-SENDGRID_FROM_EMAIL = "giuseppe.farigu@ichnobyte.it"
-SENDGRID_FROM_NAME = "Support NIS2 Tool"
-
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="it">
@@ -106,9 +99,11 @@ HTML_TEMPLATE = """
         .verified-badge { display: inline-block; background: #22543d; color: #68d391; padding: 5px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; }
         .dns-verified { display: inline-block; background: rgba(43,108,176,0.3); color: #bee3f8; padding: 5px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; }
         .network-info { background: rgba(43,108,176,0.15); border: 1px solid rgba(43,108,176,0.4); border-radius: 8px; padding: 12px 15px; margin-bottom: 15px; }
-        .network-info .network-type { font-weight: 700; }
-        .network-corporate { color: #68d391; }
-        .network-public { color: #f6e05e; }
+        .network-corporate { color: #68d391; font-weight: 700; }
+        .network-public { color: #f6e05e; font-weight: 700; }
+        .corporate-toggle { background: rgba(43,108,176,0.1); border: 1px solid rgba(43,108,176,0.3); border-radius: 8px; padding: 12px 15px; margin-top: 10px; margin-bottom: 10px; }
+        .corporate-toggle label { cursor: pointer; display: flex; align-items: center; gap: 10px; }
+        .corporate-toggle input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #2b6cb0; }
     </style>
 </head>
 <body>
@@ -131,7 +126,7 @@ HTML_TEMPLATE = """
             <div class="step" id="step4-indicator"><div class="step-circle">4</div><div class="step-label">Risultati</div></div>
         </div>
 
-        <!-- STEP 1: DATI AZIENDALI (senza domanda CISO) -->
+        <!-- STEP 1 -->
         <div class="card" id="step1">
             <h3>Dati Aziendali</h3>
             
@@ -144,7 +139,6 @@ HTML_TEMPLATE = """
                 Su questo dominio verranno eseguiti i controlli del sito web e dei record DNS.
             </small>
 
-            <!-- Rilevamento automatico rete -->
             <div class="network-info" id="network-info" style="display:none;">
                 <p><strong>Rete rilevata:</strong> <span id="network-type"></span></p>
                 <p style="font-size:13px; color:#a0aec0;" id="network-message"></p>
@@ -152,9 +146,20 @@ HTML_TEMPLATE = """
             
             <label>Indirizzo IP pubblico <span style="color:#63b3ed; font-weight:normal; font-size:12px;">- Rilevato automaticamente</span></label>
             <input type="text" id="public-ip" placeholder="Rilevamento in corso...">
-            <small style="color:#a0aec0; display:block; margin-top:-5px; margin-bottom:15px;">
-                <span id="ip-hint">Rilevamento della rete in corso...</span>
+            <small style="color:#a0aec0; display:block; margin-top:-5px; margin-bottom:10px;" id="ip-hint">
+                Rilevamento della rete in corso...
             </small>
+
+            <!-- Toggle per forzare rete aziendale -->
+            <div class="corporate-toggle" id="corporate-toggle" style="display:none;">
+                <label>
+                    <input type="checkbox" id="corporate-checkbox" onchange="toggleCorporate()">
+                    <span><strong>Sto eseguendo il test dalla rete aziendale / VPN aziendale</strong></span>
+                </label>
+                <small style="display:block; margin-top:5px; color:#a0aec0;">
+                    Spunta questa casella se sei in ufficio o connesso alla VPN. Il tool eseguirà scan infrastrutturali completi.
+                </small>
+            </div>
             
             <label>Settore (codice ATECO principale)</label>
             <select id="ateco">
@@ -201,12 +206,12 @@ HTML_TEMPLATE = """
                 <div id="otp-result"></div>
             </div>
             <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(43,108,176,0.3); text-align: center; color: #a0aec0;">
-                <small>Entrambi i test devono essere superati per procedere con la valutazione NIS2 completa.</small>
+                <small>Entrambi i test devono essere superati per procedere.</small>
             </div>
             <button onclick="goToStep3()" id="goto-step3" disabled class="btn-full" style="margin-top:15px;">Prosegui con il Questionario</button>
         </div>
 
-        <!-- STEP 3: QUESTIONARIO (con domanda CISO integrata) -->
+        <!-- STEP 3: QUESTIONARIO -->
         <div class="card hidden" id="step3">
             <h3>Questionario di Conformità NIS2</h3>
             <p style="color:#a0aec0; margin-bottom:25px;">Le seguenti domande coprono i requisiti fondamentali del <strong>D.Lgs. 138/2024</strong> (recepimento Direttiva NIS2).</p>
@@ -315,37 +320,35 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-        // Variabili globali
         var dnsVerified = false;
         var otpVerified = false;
         var emailResults = null;
         var isCorporateNetwork = false;
         var detectedIP = '';
 
-               // Rilevamento automatico IP (versione semplificata)
+        // Rilevamento automatico IP (semplificato)
         (function() {
             var ipField = document.getElementById('public-ip');
             var ipHint = document.getElementById('ip-hint');
             var networkInfo = document.getElementById('network-info');
             var networkType = document.getElementById('network-type');
             var networkMessage = document.getElementById('network-message');
+            var corporateToggle = document.getElementById('corporate-toggle');
             
-            // Se gli elementi non esistono, esci silenziosamente
             if (!ipField) return;
             
-            // Timeout di sicurezza: dopo 4 secondi, chiedi inserimento manuale
             var timeout = setTimeout(function() {
-                if (ipField.value === '' || ipField.value === 'Rilevamento in corso...') {
+                if (!detectedIP) {
                     ipField.value = '';
                     ipField.placeholder = 'Inserisci IP pubblico aziendale';
-                    if (ipHint) ipHint.innerHTML = '⚠️ Rilevamento automatico non disponibile. Inserisci l\\'IP manualmente (cerca "mio IP" su Google dalla rete aziendale).';
+                    if (ipHint) ipHint.innerHTML = '⚠️ Rilevamento non disponibile. Inserisci l\\'IP manualmente.';
                     if (networkInfo) networkInfo.style.display = 'block';
-                    if (networkType) networkType.innerHTML = '<span class="badge-gray">🌐 Inserimento manuale richiesto</span>';
-                    if (networkMessage) networkMessage.innerHTML = 'Non è stato possibile rilevare automaticamente l\\'IP. Inseriscilo manualmente per procedere.';
+                    if (networkType) networkType.innerHTML = '<span class="badge-gray">🌐 Inserimento manuale</span>';
+                    if (networkMessage) networkMessage.innerHTML = 'Inserisci l\\'IP pubblico della rete aziendale. Se non lo conosci, cerca "mio IP" su Google dal PC in ufficio.';
+                    if (corporateToggle) corporateToggle.style.display = 'block';
                 }
-            }, 4000);
+            }, 5000);
             
-            // Prova a rilevare l'IP
             try {
                 fetch('https://api.ipify.org?format=json')
                     .then(function(resp) { return resp.json(); })
@@ -355,20 +358,33 @@ HTML_TEMPLATE = """
                             detectedIP = data.ip;
                             ipField.value = detectedIP;
                             ipField.style.borderColor = 'rgba(43,108,176,0.6)';
-                            if (ipHint) ipHint.innerHTML = '✅ IP rilevato: ' + detectedIP + '. Se sei in ufficio o in VPN, puoi procedere.';
+                            if (ipHint) ipHint.innerHTML = '✅ IP rilevato: ' + detectedIP + '.';
                             if (networkInfo) networkInfo.style.display = 'block';
                             if (networkType) networkType.innerHTML = '<span class="badge-blue">🌐 IP Pubblico Rilevato</span>';
-                            if (networkMessage) networkMessage.innerHTML = 'IP: ' + detectedIP + '. Gli scan infrastrutturali verranno eseguiti su questo indirizzo. Se sei in smart working, sostituiscilo con l\\'IP della rete aziendale.';
-                            isCorporateNetwork = false; // Per sicurezza, assumiamo rete non aziendale
+                            if (networkMessage) networkMessage.innerHTML = 'IP: ' + detectedIP + '. Per un assessment completo, spunta la casella sottostante se sei in ufficio o in VPN.';
+                            if (corporateToggle) corporateToggle.style.display = 'block';
                         }
                     })
-                    .catch(function() {
-                        // Lasciamo scattare il timeout
-                    });
-            } catch(e) {
-                // Lasciamo scattare il timeout
-            }
+                    .catch(function() {});
+            } catch(e) {}
         })();
+
+        function toggleCorporate() {
+            isCorporateNetwork = document.getElementById('corporate-checkbox').checked;
+            var networkType = document.getElementById('network-type');
+            var networkMessage = document.getElementById('network-message');
+            var ipHint = document.getElementById('ip-hint');
+            
+            if (isCorporateNetwork) {
+                if (networkType) networkType.innerHTML = '<span class="network-corporate">🏢 Rete Aziendale (confermata)</span>';
+                if (networkMessage) networkMessage.innerHTML = 'Hai confermato di essere in rete aziendale. Gli scan infrastrutturali saranno eseguiti in modalità completa.';
+                if (ipHint) ipHint.innerHTML = '✅ Rete aziendale confermata. I test infrastrutturali sono attivi su questo IP.';
+            } else {
+                if (networkType) networkType.innerHTML = '<span class="badge-blue">🌐 IP Pubblico Rilevato</span>';
+                if (networkMessage) networkMessage.innerHTML = 'IP: ' + detectedIP + '. Per un assessment completo, spunta la casella se sei in ufficio o in VPN.';
+                if (ipHint) ipHint.innerHTML = '✅ IP rilevato: ' + detectedIP + '.';
+            }
+        }
 
         function goToStep2() {
             var vat = document.getElementById("vat").value.trim();
@@ -484,12 +500,6 @@ HTML_TEMPLATE = """
                 if (!s) { alert("Rispondi a tutte le domande (manca n." + i + ")"); return; }
                 questions["q" + i] = s.value;
             }
-            // Determina il target per gli scan in base al tipo di rete
-            var scanTarget = document.getElementById("domain").value.trim();
-            if (isCorporateNetwork) {
-                scanTarget = document.getElementById("public-ip").value.trim() || scanTarget;
-            }
-            
             var payload = {
                 vat_number: document.getElementById("vat").value.trim(),
                 domain: document.getElementById("domain").value.trim(),
@@ -530,7 +540,6 @@ HTML_TEMPLATE = """
             var h = "<div class='card' style='text-align:center;'><h2>Report Quick Scan NIS2</h2>";
             h += "<div class='score-circle score-" + rc + "'>" + score.total_score + "/100</div>";
             h += "<p class='" + score.risk_color + "'><strong>Rischio: " + score.overall_risk + "</strong></p>";
-            // Mostra il tipo di rete rilevata
             h += "<p style='font-size:13px;color:#a0aec0;'>Rete: " + (isCorporateNetwork ? "🏢 Aziendale" : "🏠 Domestica/Pubblica") + " | IP: " + detectedIP + "</p>";
             h += "</div>";
             
@@ -556,7 +565,7 @@ HTML_TEMPLATE = """
             if (score.infra_details && score.infra_details.length > 0) {
                 h += "<div class='card'><h3>Infrastruttura e Rete</h3>";
                 if (!isCorporateNetwork) {
-                    h += "<p style='color:#f6e05e; font-size:13px; margin-bottom:10px;'>⚠️ Test eseguiti in modalità ridotta (rete domestica). Per un assessment completo, esegui il test dalla rete aziendale.</p>";
+                    h += "<p style='color:#f6e05e; font-size:13px; margin-bottom:10px;'>⚠️ Test eseguiti in modalità ridotta (rete non aziendale). Per un assessment completo, spunta la casella 'Rete aziendale' ed esegui il test dall'ufficio.</p>";
                 }
                 h += "<table><tr><th>Test</th><th>Punteggio</th><th>Note</th></tr>";
                 for (var j = 0; j < score.infra_details.length; j++) {
@@ -665,7 +674,6 @@ def scan():
         company_data["ateco"] = data.get('ateco','N/D')
         company_data["employees"] = data.get('employees','N/D')
     
-    # Il CISO ora arriva dal questionario (domanda q3)
     questions = data.get('questions', {})
     ciso_answer = questions.get('q3', 'no')
     if ciso_answer == 'si_interno':
@@ -681,7 +689,6 @@ def scan():
     company_data["vat"] = data.get('vat_number','')
     company_data["is_corporate_network"] = data.get('is_corporate_network', False)
     
-    # Target per gli scan: in base al tipo di rete
     is_corporate = data.get('is_corporate_network', False)
     if is_corporate:
         target = data.get('public_ip', '') or data.get('domain', '')
