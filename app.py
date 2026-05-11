@@ -4,90 +4,18 @@ from domain_scanner import scan_domain
 from scoring import calculate_nis2_score
 import random
 import string
-import smtplib
 import dns.resolver
+import smtplib
 import socket
-import subprocess
-import sys
 import os
-from email.mime.text import MIMEText
 
 app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = 'nis2-quick-scan-secret-key-change-me'
+app.secret_key = 'nis2-web-version-2026'
 
 verification_codes = {}
 
-# ============================================================
-# RILEVAMENTO DOMINIO LOCALE
-# ============================================================
-
-def detect_local_domain():
-    domain_info = {
-        "is_joined": False,
-        "domain_name": "",
-        "workgroup": "",
-        "full_computer_name": ""
-    }
-    
-    try:
-        hostname = socket.gethostname()
-        domain_info["full_computer_name"] = hostname
-        
-        if '.' in hostname:
-            domain_info["is_joined"] = True
-            domain_info["domain_name"] = hostname.split('.', 1)[1]
-        
-        if sys.platform == 'win32':
-            user_domain = os.environ.get('USERDNSDOMAIN', '')
-            if user_domain and user_domain != os.environ.get('COMPUTERNAME', ''):
-                domain_info["is_joined"] = True
-                domain_info["domain_name"] = user_domain
-            
-            if not domain_info["is_joined"]:
-                try:
-                    out = subprocess.run(['systeminfo'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-                    for line in out.stdout.split('\n'):
-                        if 'Dominio:' in line:
-                            domain_value = line.split(':')[-1].strip()
-                            if domain_value and domain_value != 'WORKGROUP':
-                                domain_info["is_joined"] = True
-                                domain_info["domain_name"] = domain_value
-                            else:
-                                domain_info["workgroup"] = domain_value
-                except: pass
-            
-            if not domain_info["is_joined"]:
-                try:
-                    out = subprocess.run(
-                        ['reg', 'query', 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters', '/v', 'Domain'],
-                        capture_output=True, text=True, timeout=5,
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    )
-                    for line in out.stdout.split('\n'):
-                        if 'Domain' in line and 'REG_SZ' in line:
-                            parts = line.strip().split()
-                            for i, part in enumerate(parts):
-                                if part == 'REG_SZ' and i + 1 < len(parts):
-                                    domain_value = parts[i + 1]
-                                    if domain_value and domain_value != 'WORKGROUP':
-                                        domain_info["is_joined"] = True
-                                        domain_info["domain_name"] = domain_value
-                                    else:
-                                        domain_info["workgroup"] = domain_value
-                                    break
-                except: pass
-    
-    except Exception as e:
-        domain_info["error"] = str(e)[:50]
-    
-    return domain_info
-
-local_domain_info = detect_local_domain()
-print(f"Dominio locale: {local_domain_info['domain_name'] if local_domain_info['is_joined'] else 'Nessuno'}")
-
-# ============================================================
-# HTML TEMPLATE
-# ============================================================
+# Rileva se siamo su Render
+IS_RENDER = os.environ.get('RENDER', 'false') == 'true'
 
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
@@ -114,7 +42,7 @@ HTML_TEMPLATE = r"""
         }
         .top-bar {
             position: relative; z-index: 10;
-            display: flex; align-items: center; justify-content: flex-start;
+            display: flex; align-items: center; justify-content: space-between;
             padding: 15px 30px; background: rgba(10, 22, 40, 0.95);
             border-bottom: 2px solid rgba(43, 108, 176, 0.5);
             backdrop-filter: blur(10px); gap: 20px; flex-wrap: wrap;
@@ -133,6 +61,14 @@ HTML_TEMPLATE = r"""
         .btn-full { width: 100%; padding: 15px 30px; font-size: 16px; }
         .btn-small { width: auto; padding: 10px 20px; font-size: 14px; margin-top: 5px; }
         .btn-outline { background: transparent; border: 2px solid #2b6cb0; color: #2b6cb0; }
+        .btn-download {
+            background: linear-gradient(135deg, #38a169, #2f855a);
+            color: white; border: none; padding: 16px 30px;
+            border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 700;
+            display: inline-block; text-decoration: none; text-align: center;
+            transition: transform 0.2s; width: 100%;
+        }
+        .btn-download:hover { transform: scale(1.02); }
         input, select { padding: 12px; border: 1px solid rgba(43,108,176,0.4); border-radius: 6px; width: 100%; font-size: 16px; margin-bottom: 10px; background: rgba(15,27,45,0.8); color: #e2e8f0; }
         input::placeholder { color: #718096; }
         select { color: #e2e8f0; }
@@ -148,6 +84,12 @@ HTML_TEMPLATE = r"""
         th { background: rgba(43,108,176,0.2); font-weight: 600; }
         .cta { background: linear-gradient(135deg, #ed8936, #dd6b20); color: white; padding: 25px; border-radius: 10px; text-align: center; margin-top: 25px; }
         .cta h3 { margin-top: 0; color: white; font-size: 20px; }
+        .download-box {
+            background: rgba(56, 161, 105, 0.1); border: 2px solid rgba(56, 161, 105, 0.4);
+            border-radius: 12px; padding: 30px; text-align: center; margin-top: 25px;
+        }
+        .download-box h3 { color: #68d391; font-size: 22px; margin-bottom: 15px; }
+        .download-box p { color: #a0aec0; margin-bottom: 20px; font-size: 15px; }
         .score-circle { width: 110px; height: 110px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 20px auto; font-size: 32px; font-weight: bold; color: white; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
         .score-green { background: linear-gradient(135deg, #38a169, #2f855a); }
         .score-yellow { background: linear-gradient(135deg, #d69e2e, #b7791f); }
@@ -183,11 +125,11 @@ HTML_TEMPLATE = r"""
         .otp-input { width: 150px !important; display: inline-block; margin-right: 10px; }
         .verified-badge { display: inline-block; background: #22543d; color: #68d391; padding: 5px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; }
         .company-preview { background: rgba(43,108,176,0.15); border: 1px solid rgba(43,108,176,0.4); border-radius: 8px; padding: 12px; margin-top:-5px; margin-bottom:15px; }
-        .domain-info-box { background: rgba(43,108,176,0.1); border: 1px solid rgba(43,108,176,0.3); border-radius: 8px; padding: 12px 15px; margin-bottom: 15px; }
-        .corporate-toggle { background: rgba(43,108,176,0.1); border: 1px solid rgba(43,108,176,0.3); border-radius: 8px; padding: 12px 15px; }
-        .corporate-toggle label { cursor: pointer; display: flex; align-items: center; gap: 10px; }
-        .corporate-toggle input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #2b6cb0; }
+        .cloud-info-box { background: rgba(43,108,176,0.1); border: 1px solid rgba(43,108,176,0.3); border-radius: 8px; padding: 12px 15px; margin-bottom: 15px; }
         .total-questions { color: #718096; font-size: 12px; text-align: right; margin-bottom: 10px; }
+        .features-list { list-style: none; padding: 0; margin: 15px 0; text-align: left; display: inline-block; }
+        .features-list li { padding: 8px 0; color: #cbd5e0; font-size: 14px; }
+        .features-list li span { margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -201,7 +143,12 @@ HTML_TEMPLATE = r"""
     </div>
 
     <div class="main-container">
-        <p class="subtitle">Quick Scan per la verifica di conformita al <strong>D.Lgs. 138/2024</strong> (Direttiva NIS2).</p>
+        <p class="subtitle">Quick Scan gratuito per la verifica di conformita al <strong>D.Lgs. 138/2024</strong> (Direttiva NIS2).</p>
+
+        <div class="cloud-info-box">
+            <p style="font-size:13px;"><strong>☁️ Versione Cloud - Analisi della superficie pubblica</strong></p>
+            <p style="font-size:12px;color:#a0aec0;">Questa versione web esegue scan del dominio pubblico e DNS. Per l'analisi completa della rete interna, scarica la versione portable.</p>
+        </div>
 
         <div class="step-indicator">
             <div class="step" id="step1-indicator"><div class="step-circle">1</div><div class="step-label">Dati</div></div>
@@ -213,22 +160,12 @@ HTML_TEMPLATE = r"""
         <!-- STEP 1 -->
         <div class="card" id="step1">
             <h3>Dati Aziendali</h3>
-            <div class="domain-info-box hidden" id="domain-info-box">
-                <p style="font-size:14px;"><span id="domain-status-icon"></span> <strong id="domain-status-text"></strong></p>
-                <p style="font-size:12px;color:#a0aec0;margin-top:3px;" id="domain-detail-text"></p>
-            </div>
             <label>Partita IVA</label>
             <input type="text" id="vat" placeholder="es. 12345678901">
             <div id="company-preview" class="company-preview hidden"></div>
             <label>Dominio aziendale</label>
             <input type="text" id="domain" placeholder="es. azienda.it">
-            <small style="color:#a0aec0; display:block; margin-top:-5px; margin-bottom:10px;" id="domain-hint-text">Dominio per i controlli del sito web e dei record DNS.</small>
-            <label>Indirizzo IP</label>
-            <input type="text" id="public-ip" placeholder="Rilevamento in corso...">
-            <small style="color:#a0aec0; display:block; margin-top:-5px; margin-bottom:10px;" id="ip-hint">Rilevamento IP in corso...</small>
-            <div class="corporate-toggle hidden" id="corporate-toggle">
-                <label><input type="checkbox" id="corporate-checkbox" onchange="toggleCorporate()"><span><strong>Sto eseguendo il test dalla rete aziendale / VPN aziendale</strong></span></label>
-            </div>
+            <small style="color:#a0aec0; display:block; margin-top:-5px; margin-bottom:10px;">Dominio per i controlli del sito web e dei record DNS.</small>
             <label>Settore (codice ATECO principale)</label>
             <select id="ateco">
                 <option value="">Seleziona il tuo settore...</option>
@@ -245,9 +182,11 @@ HTML_TEMPLATE = r"""
             <button onclick="goToStep2()">Avanti</button>
         </div>
 
-        <!-- STEP 2: SCAN -->
+        <!-- STEP 2: SCAN WEB -->
         <div class="card hidden" id="step2">
-            <h3>Scan Tecnici Automatici</h3>
+            <h3>Scan Tecnici - Versione Cloud</h3>
+            <p style="color:#a0aec0; margin-bottom:15px; font-size:13px;">☁️ Scan della superficie pubblica. Rete locale ed endpoint richiedono la <strong>versione portable</strong>.</p>
+            
             <div class="verification-section">
                 <div class="section-title">📧 Verifica DNS Email</div>
                 <label>Email aziendale</label>
@@ -264,121 +203,116 @@ HTML_TEMPLATE = r"""
                 </div>
                 <div id="otp-result"></div>
             </div>
-            <div id="network-scan-result" style="margin-top:20px;"></div>
-            <div id="endpoint-scan-result" style="margin-top:20px;"></div>
+            
+            <div style="background:rgba(43,108,176,0.1);border:1px solid rgba(43,108,176,0.3);border-radius:8px;padding:12px;margin-top:15px;">
+                <p style="font-size:13px;color:#63b3ed;"><strong>🔍 Scan di rete ed endpoint non disponibili nella versione cloud</strong></p>
+                <p style="font-size:12px;color:#a0aec0;">RDP, SMB, porte, firewall, antivirus, BitLocker e altri controlli interni sono disponibili solo nella <strong>versione portable</strong> da eseguire sulla rete aziendale.</p>
+            </div>
+
             <button onclick="goToStep3()" id="goto-step3" disabled class="btn-full" style="margin-top:15px;">Prosegui con il Questionario</button>
         </div>
 
-        <!-- STEP 3: QUESTIONARIO PROFESSIONALE -->
+        <!-- STEP 3: QUESTIONARIO -->
         <div class="card hidden" id="step3">
             <h3>📋 Questionario di Autovalutazione NIS2</h3>
-            <p style="color:#a0aec0; margin-bottom:5px;">Rispondi alle domande per valutare la conformita al <strong>D.Lgs. 138/2024</strong> (Direttiva NIS2).</p>
+            <p style="color:#a0aec0; margin-bottom:5px;">Rispondi alle domande per valutare la conformita al <strong>D.Lgs. 138/2024</strong>.</p>
             <p class="total-questions">9 domande • Tempo stimato: 3 minuti</p>
 
-            <!-- SEZIONE A -->
             <div class="section-header"><span class="section-icon">🏛️</span><div class="section-title">A. Registrazione e Governance</div></div>
             <div class="question-block">
                 <span class="question-number">1</span><span class="law-ref">Art. 7 D.Lgs. 138/2024</span>
                 <p class="question-title">Registrazione al portale ACN e designazione del Punto di Contatto</p>
-                <p class="question-desc">La vostra organizzazione ha completato la registrazione al portale dell'Agenzia per la Cybersicurezza Nazionale e ha designato un Punto di Contatto per le comunicazioni con l'autorità?</p>
+                <p class="question-desc">La vostra organizzazione ha completato la registrazione e ha designato un Punto di Contatto?</p>
                 <div class="radio-group">
-                    <label><input type="radio" name="q1" value="si"><span>✅ Registrazione completata</span></label>
-                    <label><input type="radio" name="q1" value="no"><span>❌ Non ancora effettuata</span></label>
+                    <label><input type="radio" name="q1" value="si"><span>✅ Completata</span></label>
+                    <label><input type="radio" name="q1" value="no"><span>❌ Non ancora</span></label>
                 </div>
             </div>
-
             <div class="question-block">
                 <span class="question-number">2</span><span class="law-ref">Art. 20 D.Lgs. 138/2024</span>
                 <p class="question-title">Responsabile della Sicurezza Informatica (CISO)</p>
-                <p class="question-desc">La vostra azienda ha nominato un Chief Information Security Officer (CISO) o un referente per la sicurezza informatica, interno o esterno?</p>
+                <p class="question-desc">Avete nominato un CISO o referente per la sicurezza, interno o esterno?</p>
                 <div class="radio-group">
                     <label><input type="radio" name="q2" value="si_interno"><span>🏢 CISO interno</span></label>
                     <label><input type="radio" name="q2" value="si_esterno"><span>🔗 Consulente esterno</span></label>
-                    <label><input type="radio" name="q2" value="no"><span>❌ Nessun referente</span></label>
+                    <label><input type="radio" name="q2" value="no"><span>❌ Nessuno</span></label>
                 </div>
             </div>
 
-            <!-- SEZIONE B -->
             <div class="section-header"><span class="section-icon">🛡️</span><div class="section-title">B. Analisi dei Rischi e Gestione Incidenti</div></div>
             <div class="question-block">
                 <span class="question-number">3</span><span class="law-ref">Art. 21, comma 2, lett. a</span>
                 <p class="question-title">Analisi dei Rischi Documentata</p>
-                <p class="question-desc">Disponete di un'analisi dei rischi formalizzata, aggiornata e relativa alla sicurezza dei sistemi informativi e delle reti?</p>
+                <p class="question-desc">Disponete di un'analisi dei rischi formalizzata e aggiornata?</p>
                 <div class="radio-group">
-                    <label><input type="radio" name="q3" value="si"><span>✅ Documentata e revisionata</span></label>
-                    <label><input type="radio" name="q3" value="parziale"><span>⚠️ In fase di elaborazione</span></label>
-                    <label><input type="radio" name="q3" value="no"><span>❌ Non disponibile</span></label>
+                    <label><input type="radio" name="q3" value="si"><span>✅ Sì</span></label>
+                    <label><input type="radio" name="q3" value="parziale"><span>⚠️ In elaborazione</span></label>
+                    <label><input type="radio" name="q3" value="no"><span>❌ No</span></label>
                 </div>
             </div>
-
             <div class="question-block">
                 <span class="question-number">4</span><span class="law-ref">Art. 21, comma 2, lett. b</span>
-                <p class="question-title">Sistema di Gestione e Notifica degli Incidenti</p>
-                <p class="question-desc">Avete implementato un sistema per la gestione degli incidenti informatici con procedure definite per la notifica ad ACN entro 24 ore?</p>
+                <p class="question-title">Gestione e Notifica degli Incidenti</p>
+                <p class="question-desc">Avete un sistema di notifica incidenti ad ACN entro 24 ore?</p>
                 <div class="radio-group">
-                    <label><input type="radio" name="q4" value="si"><span>✅ Procedura definita e testata</span></label>
-                    <label><input type="radio" name="q4" value="parziale"><span>⚠️ Procedura esistente ma non testata</span></label>
-                    <label><input type="radio" name="q4" value="no"><span>❌ Nessuna procedura formale</span></label>
+                    <label><input type="radio" name="q4" value="si"><span>✅ Testato</span></label>
+                    <label><input type="radio" name="q4" value="parziale"><span>⚠️ Non testato</span></label>
+                    <label><input type="radio" name="q4" value="no"><span>❌ No</span></label>
                 </div>
             </div>
 
-            <!-- SEZIONE C -->
             <div class="section-header"><span class="section-icon">🔐</span><div class="section-title">C. Misure Tecniche di Sicurezza</div></div>
             <div class="question-block">
                 <span class="question-number">5</span><span class="law-ref">Art. 21, comma 2, lett. i, h</span>
-                <p class="question-title">Politiche di Controllo Accessi e Protezione Dati</p>
-                <p class="question-desc">Applicate l'autenticazione a più fattori (MFA), il principio del minimo privilegio, e misure di protezione dati come backup regolari e cifratura?</p>
+                <p class="question-title">Politiche di Accesso e Protezione Dati (MFA, backup, cifratura)</p>
+                <p class="question-desc">Applicate MFA, minimo privilegio, backup regolari e cifratura?</p>
                 <div class="radio-group">
-                    <label><input type="radio" name="q5" value="si"><span>✅ Implementate e verificate</span></label>
-                    <label><input type="radio" name="q5" value="parziale"><span>⚠️ Solo alcune misure attive</span></label>
-                    <label><input type="radio" name="q5" value="no"><span>❌ Nessuna politica formale</span></label>
+                    <label><input type="radio" name="q5" value="si"><span>✅ Implementate</span></label>
+                    <label><input type="radio" name="q5" value="parziale"><span>⚠️ Parziali</span></label>
+                    <label><input type="radio" name="q5" value="no"><span>❌ No</span></label>
                 </div>
             </div>
-
             <div class="question-block">
                 <span class="question-number">6</span><span class="law-ref">Art. 21, comma 2, lett. e</span>
-                <p class="question-title">Patch Management e Gestione delle Vulnerabilità</p>
-                <p class="question-desc">Avete stabilito un processo di gestione degli aggiornamenti di sicurezza e delle vulnerabilità per tutti i sistemi critici?</p>
+                <p class="question-title">Patch Management e Gestione Vulnerabilità</p>
+                <p class="question-desc">Avete un processo di aggiornamento sicurezza per tutti i sistemi critici?</p>
                 <div class="radio-group">
-                    <label><input type="radio" name="q6" value="si"><span>✅ Automatizzato e verificato</span></label>
-                    <label><input type="radio" name="q6" value="parziale"><span>⚠️ Aggiornamenti manuali</span></label>
-                    <label><input type="radio" name="q6" value="no"><span>❌ Nessun processo definito</span></label>
+                    <label><input type="radio" name="q6" value="si"><span>✅ Automatizzato</span></label>
+                    <label><input type="radio" name="q6" value="parziale"><span>⚠️ Manuale</span></label>
+                    <label><input type="radio" name="q6" value="no"><span>❌ No</span></label>
                 </div>
             </div>
 
-            <!-- SEZIONE D -->
             <div class="section-header"><span class="section-icon">🔗</span><div class="section-title">D. Supply Chain, Formazione e Certificazioni</div></div>
             <div class="question-block">
                 <span class="question-number">7</span><span class="law-ref">Art. 21, comma 2, lett. d</span>
                 <p class="question-title">Verifica della Sicurezza dei Fornitori</p>
-                <p class="question-desc">Verificate formalmente la sicurezza informatica dei vostri fornitori e gestite i rischi della catena di approvvigionamento ICT?</p>
+                <p class="question-desc">Verificate la sicurezza informatica dei vostri fornitori?</p>
                 <div class="radio-group">
-                    <label><input type="radio" name="q7" value="si"><span>✅ Audit e questionari periodici</span></label>
-                    <label><input type="radio" name="q7" value="parziale"><span>⚠️ Solo fornitori critici</span></label>
-                    <label><input type="radio" name="q7" value="no"><span>❌ Nessuna verifica</span></label>
+                    <label><input type="radio" name="q7" value="si"><span>✅ Audit periodici</span></label>
+                    <label><input type="radio" name="q7" value="parziale"><span>⚠️ Solo critici</span></label>
+                    <label><input type="radio" name="q7" value="no"><span>❌ No</span></label>
                 </div>
             </div>
-
             <div class="question-block">
                 <span class="question-number">8</span><span class="law-ref">Art. 20, comma 2</span>
                 <p class="question-title">Formazione sulla Cybersicurezza</p>
-                <p class="question-desc">Effettuate formazione periodica sulla cybersicurezza per i dipendenti e gli organi di amministrazione?</p>
+                <p class="question-desc">Effettuate formazione periodica per dipendenti e amministratori?</p>
                 <div class="radio-group">
-                    <label><input type="radio" name="q8" value="si"><span>✅ Formazione annuale obbligatoria</span></label>
-                    <label><input type="radio" name="q8" value="saltuaria"><span>⚠️ Formazione saltuaria</span></label>
-                    <label><input type="radio" name="q8" value="no"><span>❌ Nessuna formazione</span></label>
+                    <label><input type="radio" name="q8" value="si"><span>✅ Annuale</span></label>
+                    <label><input type="radio" name="q8" value="saltuaria"><span>⚠️ Saltuaria</span></label>
+                    <label><input type="radio" name="q8" value="no"><span>❌ No</span></label>
                 </div>
             </div>
-
             <div class="question-block">
                 <span class="question-number">9</span><span class="law-ref">Linee Guida ACN</span>
-                <p class="question-title">Certificazioni di Sicurezza Riconosciute</p>
-                <p class="question-desc">Possedete certificazioni di sicurezza riconosciute a livello internazionale (ISO 27001, ISO 22301, SOC2, Cyber Essentials)?</p>
+                <p class="question-title">Certificazioni di Sicurezza</p>
+                <p class="question-desc">Possedete certificazioni riconosciute (ISO 27001, SOC2, etc.)?</p>
                 <div class="radio-group">
                     <label><input type="radio" name="q9" value="iso27001"><span>🏅 ISO 27001</span></label>
-                    <label><input type="radio" name="q9" value="altra"><span>🏅 Altra certificazione</span></label>
-                    <label><input type="radio" name="q9" value="in_corso"><span>🔄 In corso di ottenimento</span></label>
-                    <label><input type="radio" name="q9" value="no"><span>❌ Nessuna certificazione</span></label>
+                    <label><input type="radio" name="q9" value="altra"><span>🏅 Altra</span></label>
+                    <label><input type="radio" name="q9" value="in_corso"><span>🔄 In corso</span></label>
+                    <label><input type="radio" name="q9" value="no"><span>❌ Nessuna</span></label>
                 </div>
             </div>
 
@@ -392,8 +326,6 @@ HTML_TEMPLATE = r"""
     <script>
         var dnsVerified = false;
         var otpVerified = false;
-        var isCorporateNetwork = false;
-        var detectedIP = '';
         var scanData = null;
 
         function isValidItalianVat(vat) {
@@ -405,68 +337,192 @@ HTML_TEMPLATE = r"""
         }
 
         (function() {
-            var ipField = document.getElementById('public-ip');
-            var ipHint = document.getElementById('ip-hint');
-            var corpToggle = document.getElementById('corporate-toggle');
-            fetch('/api/detect-domain').then(function(r){return r.json();}).then(function(d){
-                var box=document.getElementById('domain-info-box'),icon=document.getElementById('domain-status-icon'),text=document.getElementById('domain-status-text'),detail=document.getElementById('domain-detail-text');
-                box.classList.remove('hidden');
-                if(d.is_joined){icon.innerHTML='✅';text.innerHTML='PC joinato a dominio: <span style="color:#68d391;">'+d.domain_name+'</span>';detail.innerHTML='Nome: '+d.full_computer_name;isCorporateNetwork=true;document.getElementById('corporate-checkbox').checked=true;corpToggle.classList.remove('hidden');if(d.domain_name&&!document.getElementById('domain').value){document.getElementById('domain').value=d.domain_name.split('.')[0]+'.it';document.getElementById('domain-hint-text').innerHTML='Dominio suggerito dal dominio locale.';}}
-                else{icon.innerHTML='💻';text.innerHTML='PC in WORKGROUP';detail.innerHTML='Scan interni limitati.';corpToggle.classList.remove('hidden');}
-            }).catch(function(){corpToggle.classList.remove('hidden');});
-            fetch('https://api.ipify.org?format=json').then(function(r){return r.json();}).then(function(d){if(d&&d.ip){detectedIP=d.ip;ipField.value=d.ip;if(ipHint)ipHint.innerHTML='IP pubblico: '+d.ip;}}).catch(function(){ipField.placeholder='Inserisci IP';});
             var lookupTimeout;
-            document.getElementById('vat').addEventListener('input',function(){var vat=this.value.trim().replace(/\D/g,'');clearTimeout(lookupTimeout);var preview=document.getElementById('company-preview');preview.classList.add('hidden');if(vat.length>=11){lookupTimeout=setTimeout(function(){fetch('/api/test-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vat_number:vat})}).then(function(r){return r.json();}).then(function(d){preview.classList.remove('hidden');if(d.success){preview.innerHTML='<p style="color:#68d391;font-weight:700;">'+d.name+'</p><p style="color:#a0aec0;font-size:13px;">'+(d.address||'')+'</p>';if(d.domain_hint&&!document.getElementById('domain').value){document.getElementById('domain').value=d.domain_hint;document.getElementById('domain-hint-text').innerHTML='Dominio suggerito dalla ragione sociale.';}}else{preview.innerHTML='<p style="color:#f6e05e;">Partita IVA non trovata nei registri pubblici</p>';}});},800);}});
+            document.getElementById('vat').addEventListener('input', function() {
+                var vat = this.value.trim().replace(/\D/g, '');
+                clearTimeout(lookupTimeout);
+                var preview = document.getElementById('company-preview');
+                preview.classList.add('hidden');
+                if (vat.length >= 11) {
+                    lookupTimeout = setTimeout(function() {
+                        fetch('/api/test-lookup', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({vat_number: vat}) })
+                            .then(function(r) { return r.json(); })
+                            .then(function(d) {
+                                preview.classList.remove('hidden');
+                                if (d.success) {
+                                    preview.innerHTML = '<p style="color:#68d391;font-weight:700;">' + d.name + '</p><p style="color:#a0aec0;font-size:13px;">' + (d.address||'') + '</p>';
+                                    if (d.domain_hint && !document.getElementById('domain').value) {
+                                        document.getElementById('domain').value = d.domain_hint;
+                                    }
+                                } else {
+                                    preview.innerHTML = '<p style="color:#f6e05e;">Partita IVA non trovata nei registri pubblici</p>';
+                                }
+                            });
+                    }, 800);
+                }
+            });
         })();
 
-        function toggleCorporate(){isCorporateNetwork=document.getElementById('corporate-checkbox').checked;var ipField=document.getElementById('public-ip'),ipHint=document.getElementById('ip-hint');if(isCorporateNetwork){fetch('/api/get-local-ip').then(function(r){return r.json();}).then(function(d){if(d.success){ipField.value=d.local_ip;ipField.style.borderColor='#68d391';if(ipHint)ipHint.innerHTML='IP Aziendale (LAN): '+d.local_ip;}});}else{ipField.value=detectedIP;if(ipHint)ipHint.innerHTML='IP pubblico: '+detectedIP;}}
+        function goToStep2() {
+            var v = document.getElementById("vat").value.trim().replace(/\D/g,''), d = document.getElementById("domain").value.trim(),
+                a = document.getElementById("ateco").value, e = document.getElementById("employees").value;
+            if (!v || !d || !a || !e) { alert("Compila tutti i campi"); return; }
+            if (v.length !== 11) { alert("Partita IVA non valida: deve contenere 11 cifre."); return; }
+            if (!isValidItalianVat(v)) { alert("Partita IVA non valida: non rispetta il formato italiano."); return; }
+            document.getElementById("step1").classList.add("hidden");
+            document.getElementById("step2").classList.remove("hidden");
+            document.getElementById("step2-indicator").classList.add("active");
+            document.getElementById("step1-indicator").classList.add("completed");
+        }
 
-        function goToStep2(){var v=document.getElementById("vat").value.trim().replace(/\D/g,''),d=document.getElementById("domain").value.trim(),a=document.getElementById("ateco").value,e=document.getElementById("employees").value;if(!v||!d||!a||!e){alert("Compila tutti i campi");return;}if(v.length!==11){alert("Partita IVA non valida: deve contenere 11 cifre.");return;}if(!isValidItalianVat(v)){alert("Partita IVA non valida: non rispetta il formato italiano.");return;}document.getElementById("step1").classList.add("hidden");document.getElementById("step2").classList.remove("hidden");document.getElementById("step2-indicator").classList.add("active");document.getElementById("step1-indicator").classList.add("completed");}
+        function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
 
-        function checkBoth(){if(dnsVerified&&otpVerified)document.getElementById("goto-step3").disabled=false;}
+        function verifyDNS() {
+            var email = document.getElementById("email").value.trim();
+            if (!email) { alert("Inserisci un indirizzo email"); return; }
+            var btn = document.getElementById("btn-dns");
+            btn.disabled = true; btn.textContent = "Analisi...";
+            fetch("/api/verify-dns", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email}) })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    var r = d.results, h = "<table style='margin-top:10px;'>";
+                    h += "<tr><td>MX</td><td class='"+(r.mx_valid?"ok":"error")+"'>"+(r.mx_valid?"OK":"NO")+"</td></tr>";
+                    h += "<tr><td>SPF</td><td class='"+(r.spf_valid?"ok":"error")+"'>"+(r.spf_valid?"OK":"NO")+"</td></tr>";
+                    h += "<tr><td>DMARC</td><td class='"+(r.dmarc_valid?"ok":"error")+"'>"+(r.dmarc_valid?"OK "+r.dmarc_policy:"NO")+"</td></tr>";
+                    h += "<tr><td>DKIM</td><td class='"+(r.dkim_verified?"ok":"error")+"'>"+(r.dkim_verified?"OK":"NO")+"</td></tr>";
+                    h += "</table>";
+                    document.getElementById("dns-result").innerHTML = h;
+                    dnsVerified = true; checkBoth();
+                }
+                btn.disabled = false; btn.textContent = "Verifica DNS";
+            });
+        }
 
-        function verifyDNS(){var email=document.getElementById("email").value.trim();if(!email){alert("Inserisci un indirizzo email");return;}var btn=document.getElementById("btn-dns");btn.disabled=true;btn.textContent="Analisi...";fetch("/api/verify-dns",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email})}).then(function(r){return r.json();}).then(function(d){if(d.success){var r=d.results,h="<table style='margin-top:10px;'>";h+="<tr><td>MX</td><td class='"+(r.mx_valid?"ok":"error")+"'>"+(r.mx_valid?"OK":"NO")+"</td></tr>";h+="<tr><td>SPF</td><td class='"+(r.spf_valid?"ok":"error")+"'>"+(r.spf_valid?"OK":"NO")+"</td></tr>";h+="<tr><td>DMARC</td><td class='"+(r.dmarc_valid?"ok":"error")+"'>"+(r.dmarc_valid?"OK "+r.dmarc_policy:"NO")+"</td></tr>";h+="<tr><td>DKIM</td><td class='"+(r.dkim_verified?"ok":"error")+"'>"+(r.dkim_verified?"OK":"NO")+"</td></tr>";h+="</table>";document.getElementById("dns-result").innerHTML=h;dnsVerified=true;checkBoth();runNetworkScan();runEndpointScan();}btn.disabled=false;btn.textContent="Verifica DNS";});}
+        function sendOTP() {
+            var email = document.getElementById("email").value.trim();
+            if (!email) { alert("Inserisci l'email"); return; }
+            var btn = document.getElementById("btn-otp-send");
+            btn.disabled = true; btn.textContent = "Invio...";
+            fetch("/api/send-otp", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email}) })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    document.getElementById("otp-section").classList.remove("hidden");
+                    document.getElementById("otp-result").innerHTML = "<p class='ok'>Codice: <strong>" + d.code + "</strong></p>";
+                }
+                btn.disabled = false; btn.textContent = "Genera Codice";
+            });
+        }
 
-        function runNetworkScan(){var ip=document.getElementById("public-ip").value.trim();fetch("/api/scan-network",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target:ip,is_corporate:isCorporateNetwork})}).then(function(r){return r.json();}).then(function(d){scanData=scanData||{};scanData.network=d;var h="<div class='section-title'>Rete</div><table>";if(d.executed){h+="<tr><td>RDP (3389)</td><td class='"+(d.rdp_open?"error":"ok")+"'>"+(d.rdp_open?"APERTO":"Chiuso")+"</td></tr>";h+="<tr><td>SMB (445)</td><td class='"+(d.smb_open?"error":"ok")+"'>"+(d.smb_open?"APERTO":"Chiuso")+"</td></tr>";h+="<tr><td>FTP (21)</td><td class='"+(d.ftp_open?"error":"ok")+"'>"+(d.ftp_open?"APERTO":"Chiuso")+"</td></tr>";h+="<tr><td>Telnet (23)</td><td class='"+(d.telnet_open?"error":"ok")+"'>"+(d.telnet_open?"APERTO":"Chiuso")+"</td></tr>";h+="<tr><td>Firewall</td><td class='"+(d.firewall_active?"ok":"error")+"'>"+(d.firewall_active?"Attivo":"Non attivo")+"</td></tr>";}else{h+="<tr><td colspan='2' class='warning'>Scan ridotto</td></tr>";}h+="</table>";document.getElementById("network-scan-result").innerHTML=h;});}
+        function verifyOTP() {
+            var email = document.getElementById("email").value.trim(), code = document.getElementById("otp-code").value.trim();
+            if (!code) { alert("Inserisci il codice"); return; }
+            fetch("/api/verify-otp", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email, code: code}) })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.verified) {
+                    otpVerified = true;
+                    document.getElementById("otp-result").innerHTML = "<span class='verified-badge'>Identita Confermata</span>";
+                    document.getElementById("otp-section").classList.add("hidden");
+                    checkBoth();
+                } else { document.getElementById("otp-result").innerHTML = "<p class='error'>Codice errato</p>"; }
+            });
+        }
 
-        function runEndpointScan(){fetch("/api/scan-endpoint",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({is_corporate:isCorporateNetwork})}).then(function(r){return r.json();}).then(function(d){scanData=scanData||{};scanData.endpoint=d;var h="<div class='section-title'>Endpoint</div><table>";if(d.executed){h+="<tr><td>Antivirus</td><td class='"+(d.av_detected?"ok":"error")+"'>"+(d.av_products||"Non rilevato")+"</td></tr>";h+="<tr><td>Aggiornamenti</td><td class='"+(d.updates_active?"ok":"error")+"'>"+(d.updates_active?"Attivi":"Non attivi")+"</td></tr>";h+="<tr><td>Utente Admin</td><td class='"+(d.is_admin?"error":"ok")+"'>"+(d.is_admin?"Si":"No")+"</td></tr>";h+="<tr><td>BitLocker</td><td class='"+(d.bitlocker===true?"ok":d.bitlocker===false?"error":"warning")+"'>"+(d.bitlocker===true?"Attivo":d.bitlocker===false?"Non attivo":"Richiede admin")+"</td></tr>";}else{h+="<tr><td colspan='2' class='warning'>Scan ridotto</td></tr>";}h+="</table>";document.getElementById("endpoint-scan-result").innerHTML=h;});}
+        function goToStep3() {
+            if (!dnsVerified || !otpVerified) { alert("Completa le verifiche"); return; }
+            document.getElementById("step2").classList.add("hidden");
+            document.getElementById("step3").classList.remove("hidden");
+            document.getElementById("step3-indicator").classList.add("active");
+            document.getElementById("step2-indicator").classList.add("completed");
+        }
 
-        function sendOTP(){var email=document.getElementById("email").value.trim();if(!email){alert("Inserisci l'email");return;}var btn=document.getElementById("btn-otp-send");btn.disabled=true;btn.textContent="Invio...";fetch("/api/send-otp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email})}).then(function(r){return r.json();}).then(function(d){if(d.success){document.getElementById("otp-section").classList.remove("hidden");document.getElementById("otp-result").innerHTML="<p class='ok'>Codice: <strong>"+d.code+"</strong></p>";}btn.disabled=false;btn.textContent="Genera Codice";});}
+        function startFullScan() {
+            var q = {};
+            for (var i = 1; i <= 9; i++) {
+                var s = document.querySelector("input[name='q"+i+"']:checked");
+                if (!s) { alert("Rispondi a tutte le domande (manca n." + i + ")"); return; }
+                q["q"+i] = s.value;
+            }
+            document.getElementById("step3").classList.add("hidden");
+            var l = document.getElementById("loading"); if (l) l.style.display = "block";
+            fetch("/api/scan", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    vat_number: document.getElementById("vat").value.trim(),
+                    domain: document.getElementById("domain").value.trim(),
+                    ateco: document.getElementById("ateco").value,
+                    employees: document.getElementById("employees").value,
+                    email: document.getElementById("email").value.trim(),
+                    dns_verified: dnsVerified, otp_verified: otpVerified,
+                    questions: q
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (l) l.style.display = "none";
+                document.getElementById("step4-indicator").classList.add("active");
+                document.getElementById("step3-indicator").classList.add("completed");
+                displayResults(d);
+            })
+            .catch(function() { if (l) l.style.display = "none"; });
+        }
 
-        function verifyOTP(){var email=document.getElementById("email").value.trim(),code=document.getElementById("otp-code").value.trim();if(!code){alert("Inserisci il codice");return;}fetch("/api/verify-otp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email,code:code})}).then(function(r){return r.json();}).then(function(d){if(d.verified){otpVerified=true;document.getElementById("otp-result").innerHTML="<span class='verified-badge'>Identita Confermata</span>";document.getElementById("otp-section").classList.add("hidden");checkBoth();}else{document.getElementById("otp-result").innerHTML="<p class='error'>Codice errato</p>";}});}
-
-        function goToStep3(){if(!dnsVerified||!otpVerified){alert("Completa le verifiche");return;}document.getElementById("step2").classList.add("hidden");document.getElementById("step3").classList.remove("hidden");document.getElementById("step3-indicator").classList.add("active");document.getElementById("step2-indicator").classList.add("completed");}
-
-        function startFullScan(){var q={};for(var i=1;i<=9;i++){var s=document.querySelector("input[name='q"+i+"']:checked");if(!s){alert("Rispondi a tutte le domande (manca n."+i+")");return;}q["q"+i]=s.value;}document.getElementById("step3").classList.add("hidden");var l=document.getElementById("loading");if(l)l.style.display="block";fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({vat_number:document.getElementById("vat").value.trim(),domain:document.getElementById("domain").value.trim(),public_ip:document.getElementById("public-ip").value.trim(),is_corporate_network:isCorporateNetwork,ateco:document.getElementById("ateco").value,employees:document.getElementById("employees").value,email:document.getElementById("email").value.trim(),dns_verified:dnsVerified,otp_verified:otpVerified,scan_data:scanData,questions:q})}).then(function(r){return r.json();}).then(function(d){if(l)l.style.display="none";document.getElementById("step4-indicator").classList.add("active");document.getElementById("step3-indicator").classList.add("completed");displayResults(d);}).catch(function(){if(l)l.style.display="none";});}
-
-        function displayResults(d){var s=d.score,rc=s.risk_color==="ok"?"green":s.risk_color==="warning"?"yellow":"red";var h="<div class='card' style='text-align:center;'><h2>Report NIS2</h2>";h+="<div class='score-circle score-"+rc+"'>"+s.total_score+"/100</div>";h+="<p class='"+s.risk_color+"'>Rischio: "+s.overall_risk+"</p></div>";h+="<div class='card'><h3>Dati</h3><table>";h+="<tr><td>Azienda</td><td>"+d.company.name+"</td></tr>";h+="<tr><td>Settore</td><td>"+d.company.ateco+"</td></tr>";h+="<tr><td>Dipendenti</td><td>"+d.company.employees+"</td></tr>";h+="<tr><td>CISO</td><td>"+(d.company.ciso||"N/D")+"</td></tr></table></div>";h+="<div class='card'><h3>Scan</h3><table><tr><th>Test</th><th>Punteggio</th><th>Note</th></tr>";for(var i=0;i<s.details.length;i++){var dd=s.details[i],c=dd.score===dd.max?"ok":dd.score===0?"error":"warning";h+="<tr><td>"+dd.area+"</td><td class='"+c+"'>"+dd.score+"/"+dd.max+"</td><td>"+dd.note+"</td></tr>";}h+="</table></div>";h+="<div class='card'><h3>Questionario</h3><table>";for(var k=0;k<s.questionnaire_details.length;k++){var q=s.questionnaire_details[k];h+="<tr><td>"+q.question+"</td><td class='"+(q.answer==="si"?"ok":"error")+"'>"+(q.answer==="si"?"Si":"No")+"</td></tr>";}h+="</table></div>";if(s.recommendations.length>0){h+="<div class='card'><h3>Azioni</h3><ul>";for(var m=0;m<s.recommendations.length;m++)h+="<li>"+s.recommendations[m]+"</li>";h+="</ul></div>";}h+="<div class='cta'><h3>Assessment completo?</h3><p>Prenota una consulenza gratuita per un audit NIS2 approfondito.</p></div>";document.getElementById("results").innerHTML=h;document.getElementById("results").scrollIntoView({behavior:"smooth"});}
+        function displayResults(d) {
+            var s = d.score, rc = s.risk_color === "ok" ? "green" : s.risk_color === "warning" ? "yellow" : "red";
+            var h = "<div class='card' style='text-align:center;'><h2>Report Quick Scan NIS2</h2>";
+            h += "<div class='score-circle score-" + rc + "'>" + s.total_score + "/100</div>";
+            h += "<p class='" + s.risk_color + "'>Rischio: " + s.overall_risk + "</p>";
+            h += "<p style='font-size:12px;color:#a0aec0;'>☁️ Versione Cloud - Solo superficie pubblica</p></div>";
+            
+            h += "<div class='card'><h3>Dati</h3><table>";
+            h += "<tr><td>Azienda</td><td>" + d.company.name + "</td></tr>";
+            h += "<tr><td>Settore</td><td>" + d.company.ateco + "</td></tr>";
+            h += "<tr><td>Dipendenti</td><td>" + d.company.employees + "</td></tr>";
+            h += "<tr><td>CISO</td><td>" + (d.company.ciso || "N/D") + "</td></tr></table></div>";
+            
+            h += "<div class='card'><h3>Scan Tecnici</h3><table><tr><th>Test</th><th>Punteggio</th><th>Note</th></tr>";
+            for (var i = 0; i < s.details.length; i++) { var dd = s.details[i], c = dd.score === dd.max ? "ok" : dd.score === 0 ? "error" : "warning"; h += "<tr><td>" + dd.area + "</td><td class='" + c + "'>" + dd.score + "/" + dd.max + "</td><td>" + dd.note + "</td></tr>"; }
+            h += "</table></div>";
+            
+            h += "<div class='card'><h3>Questionario</h3><table>";
+            for (var k = 0; k < s.questionnaire_details.length; k++) { var q = s.questionnaire_details[k]; h += "<tr><td>" + q.question + "</td><td class='" + (q.answer === "si" ? "ok" : "error") + "'>" + (q.answer === "si" ? "Si" : "No") + "</td></tr>"; }
+            h += "</table></div>";
+            
+            if (s.recommendations.length > 0) { h += "<div class='card'><h3>Azioni Prioritarie</h3><ul>"; for (var m = 0; m < s.recommendations.length; m++) h += "<li>" + s.recommendations[m] + "</li>"; h += "</ul></div>"; }
+            
+            // BOX DOWNLOAD PORTABLE
+            h += "<div class='download-box'>";
+            h += "<h3>🔍 Vuoi un'analisi completa della rete interna?</h3>";
+            h += "<p>La versione cloud analizza solo la superficie pubblica. Con la <strong>versione portable</strong> puoi eseguire:</p>";
+            h += "<ul class='features-list'>";
+            h += "<li><span>🔐</span> Scan porte interne (RDP, SMB, FTP, Telnet)</li>";
+            h += "<li><span>🛡️</span> Verifica firewall e antivirus aziendali</li>";
+            h += "<li><span>💻</span> Controllo BitLocker e crittografia endpoint</li>";
+            h += "<li><span>📡</span> Rilevamento automatico dominio e rete locale</li>";
+            h += "<li><span>📊</span> Report NIS2 completo con punteggio esteso</li>";
+            h += "</ul>";
+            h += "<p style='color:#68d391; font-weight:600; margin:15px 0;'>Scarica la versione portable ed esegui lo scan completo dalla tua rete aziendale.</p>";
+            h += "<a href='#' class='btn-download' onclick='alert(\"Versione portable in arrivo. Contattaci per maggiori informazioni.\"); return false;'>⬇️ SCARICA VERSIONE PORTABLE</a>";
+            h += "<p style='font-size:11px;color:#718096;margin-top:10px;'>Licenza a pagamento • Include 30 giorni di aggiornamenti</p>";
+            h += "</div>";
+            
+            document.getElementById("results").innerHTML = h;
+            document.getElementById("results").scrollIntoView({ behavior: "smooth" });
+        }
     </script>
 </body>
 </html>
 """
 
 # ============================================================
-# ROTTE API
+# ROTTE API (solo web)
 # ============================================================
 
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
-
-@app.route('/api/detect-domain', methods=['GET'])
-def detect_domain():
-    return jsonify(local_domain_info)
-
-@app.route('/api/get-local-ip', methods=['GET'])
-def get_local_ip():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-        return jsonify({"success": True, "local_ip": local_ip})
-    except:
-        return jsonify({"success": False, "local_ip": "127.0.0.1"})
 
 @app.route('/api/test-lookup', methods=['POST'])
 def test_lookup():
@@ -526,65 +582,6 @@ def verify_otp():
     if verified: del verification_codes[email]
     return jsonify({"verified": verified})
 
-@app.route('/api/scan-network', methods=['POST'])
-def scan_network():
-    target = request.json.get('target', '127.0.0.1')
-    is_corporate = request.json.get('is_corporate', False)
-    if not is_corporate: return jsonify({"executed": False})
-    ports = {3389: "rdp_open", 445: "smb_open", 21: "ftp_open", 23: "telnet_open"}
-    result = {"executed": True, "rdp_open": False, "smb_open": False, "ftp_open": False, "telnet_open": False, "firewall_active": False}
-    for port, key in ports.items():
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1.5)
-            if sock.connect_ex((target, port)) == 0: result[key] = True
-            sock.close()
-        except: pass
-    try:
-        if sys.platform == 'win32':
-            out = subprocess.run(['netsh', 'advfirewall', 'show', 'allprofiles', 'state'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-            for line in out.stdout.split('\n'):
-                if ('Stato' in line or 'State' in line) and ('ON' in line.upper() or 'ATTIVO' in line.upper()): result["firewall_active"] = True
-    except: pass
-    return jsonify(result)
-
-@app.route('/api/scan-endpoint', methods=['POST'])
-def scan_endpoint():
-    if not request.json.get('is_corporate', False): return jsonify({"executed": False})
-    result = {"executed": True, "av_detected": False, "av_products": "Non rilevato", "updates_active": False, "is_admin": False, "bitlocker": False}
-    if sys.platform == 'win32':
-        try:
-            out = subprocess.run(['wmic', '/namespace:\\\\root\\SecurityCenter2', 'path', 'AntiVirusProduct', 'get', 'displayName'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-            for line in out.stdout.split('\n'):
-                line = line.strip()
-                if line and line != 'displayName': result["av_detected"] = True; result["av_products"] = line
-        except: pass
-        try:
-            out = subprocess.run(['sc', 'query', 'CSFalconService'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-            if 'RUNNING' in out.stdout: result["av_detected"] = True; result["av_products"] = "CrowdStrike Falcon (EDR)"
-        except: pass
-        if not result["av_detected"]: result["av_detected"] = True; result["av_products"] = "Windows Defender"
-        try:
-            out = subprocess.run(['reg', 'query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update', '/v', 'AUOptions'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-            if '0x' in out.stdout: result["updates_active"] = True
-        except: pass
-        if not result["updates_active"]:
-            try:
-                out = subprocess.run(['sc', 'query', 'wuauserv'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-                if 'RUNNING' in out.stdout: result["updates_active"] = True
-            except: pass
-        try:
-            out = subprocess.run(['whoami', '/groups'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-            result["is_admin"] = 'S-1-5-32-544' in out.stdout and ('Enabled group' in out.stdout or 'Gruppo abilitato' in out.stdout)
-        except: pass
-        try:
-            out = subprocess.run(['manage-bde', '-status', 'C:'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
-            if 'Protetto' in out.stdout or 'Fully Encrypted' in out.stdout: result["bitlocker"] = True
-            elif 'Non protetto' in out.stdout or 'Not Protected' in out.stdout: result["bitlocker"] = False
-            else: result["bitlocker"] = "unknown"
-        except: result["bitlocker"] = "unknown"
-    return jsonify(result)
-
 @app.route('/api/scan', methods=['POST'])
 def scan():
     data = request.json
@@ -599,7 +596,7 @@ def scan():
     company_data["dns_verified"] = data.get('dns_verified', False)
     company_data["otp_verified"] = data.get('otp_verified', False)
     company_data["vat"] = data.get('vat_number','')
-    company_data["is_corporate_network"] = data.get('is_corporate_network', False)
+    company_data["is_corporate_network"] = False  # Forzato a False nella versione web
     domain = data.get('domain', '')
     scan_results = scan_domain(domain)
     score = calculate_nis2_score(company_data, scan_results, questions)
