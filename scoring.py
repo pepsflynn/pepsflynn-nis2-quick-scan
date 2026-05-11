@@ -64,201 +64,131 @@ def check_certification_equivalence(scan_results, company_data):
 def calculate_nis2_score(company_data, scan_results, questions=None):
     technical_score = 0
     details = []
-    infra_details = []
     recommendations = []
 
     # ============================================================
     # SITO WEB (max 35 punti)
     # ============================================================
 
-    # SSL (10 punti)
     ssl = scan_results.get("ssl", {})
     if ssl.get("valid"):
         days = ssl.get("days_left", 0)
         if days > 90:
             technical_score += 10
-            details.append({"area": "SSL", "score": 10, "max": 10, "note": f"Valido ({days} giorni)"})
+            details.append({"area": "SSL (Art. 21.2.h)", "score": 10, "max": 10, "note": f"Valido ({days} giorni)"})
         elif days > 30:
             technical_score += 6
-            details.append({"area": "SSL", "score": 6, "max": 10, "note": f"In scadenza tra {days} giorni"})
+            details.append({"area": "SSL (Art. 21.2.h)", "score": 6, "max": 10, "note": f"In scadenza tra {days} giorni"})
         else:
             technical_score += 3
-            details.append({"area": "SSL", "score": 3, "max": 10, "note": f"Scadenza imminente ({days} giorni)"})
+            details.append({"area": "SSL (Art. 21.2.h)", "score": 3, "max": 10, "note": f"Scadenza imminente ({days} giorni)"})
     else:
-        details.append({"area": "SSL", "score": 0, "max": 10, "note": "Non valido o assente"})
-        recommendations.append("Installare un certificato SSL valido")
+        details.append({"area": "SSL (Art. 21.2.h)", "score": 0, "max": 10, "note": "Non valido o assente"})
+        recommendations.append("Installare un certificato SSL valido (Art. 21.2.h)")
 
-    # Header sicurezza (15 punti)
     headers = scan_results.get("headers", {})
     if headers:
         present = sum(1 for h in headers.values() if h.get("status") == "presente")
         total = len(headers)
         score = int((present / total) * 15)
         technical_score += score
-        details.append({"area": "Header Sicurezza", "score": score, "max": 15, "note": f"{present}/{total} header presenti"})
+        details.append({"area": "Header Sicurezza (Art. 21.2.a)", "score": score, "max": 15, "note": f"{present}/{total} header presenti"})
         if present < 4:
-            recommendations.append("Configurare gli header di sicurezza HTTP mancanti")
+            recommendations.append("Configurare gli header di sicurezza HTTP mancanti (Art. 21.2.a)")
 
-    # CMS e tecnologie (5 punti)
     cms = scan_results.get("cms", {})
     risks = cms.get("risks", [])
     if len(risks) == 0:
         technical_score += 5
-        details.append({"area": "CMS e Tecnologie", "score": 5, "max": 5, "note": "Nessuna vulnerabilità nota rilevata"})
+        details.append({"area": "CMS e Tecnologie (Art. 21.2.e)", "score": 5, "max": 5, "note": "Nessuna vulnerabilità rilevata"})
     elif len(risks) <= 2:
         technical_score += 2
-        details.append({"area": "CMS e Tecnologie", "score": 2, "max": 5, "note": f"{len(risks)} rischi rilevati"})
-        for r in risks:
-            recommendations.append(f"⚠ {r}")
+        details.append({"area": "CMS e Tecnologie (Art. 21.2.e)", "score": 2, "max": 5, "note": f"{len(risks)} rischi rilevati"})
     else:
-        details.append({"area": "CMS e Tecnologie", "score": 0, "max": 5, "note": f"{len(risks)} rischi critici!"})
-        for r in risks:
-            recommendations.append(f"🔴 {r}")
+        details.append({"area": "CMS e Tecnologie (Art. 21.2.e)", "score": 0, "max": 5, "note": f"{len(risks)} rischi critici!"})
 
-    # WAF (5 punti)
     waf = scan_results.get("waf", {})
     if waf.get("protected"):
         technical_score += 5
-        details.append({"area": "WAF", "score": 5, "max": 5, "note": "Protetto"})
+        details.append({"area": "WAF (Art. 21.2.a)", "score": 5, "max": 5, "note": "Protetto"})
     else:
-        details.append({"area": "WAF", "score": 0, "max": 5, "note": "Nessun WAF rilevato"})
-        recommendations.append("Implementare un Web Application Firewall (WAF)")
+        details.append({"area": "WAF (Art. 21.2.a)", "score": 0, "max": 5, "note": "Nessun WAF rilevato"})
 
     # ============================================================
     # EMAIL (max 15 punti)
     # ============================================================
-
     dmarc = scan_results.get("dmarc", {})
     if dmarc.get("presente"):
         policy = dmarc.get("policy", "none")
         if policy == "reject":
             technical_score += 8
-            details.append({"area": "DMARC", "score": 8, "max": 8, "note": "Policy reject"})
+            details.append({"area": "DMARC (Art. 21.2.a)", "score": 8, "max": 8, "note": "Policy reject"})
         elif policy == "quarantine":
             technical_score += 5
-            details.append({"area": "DMARC", "score": 5, "max": 8, "note": "Policy quarantine"})
+            details.append({"area": "DMARC (Art. 21.2.a)", "score": 5, "max": 8, "note": "Policy quarantine"})
         else:
             technical_score += 3
-            details.append({"area": "DMARC", "score": 3, "max": 8, "note": "Policy none (debole)"})
-            recommendations.append("Aumentare policy DMARC a 'reject' o 'quarantine'")
+            details.append({"area": "DMARC (Art. 21.2.a)", "score": 3, "max": 8, "note": "Policy none (debole)"})
     else:
-        details.append({"area": "DMARC", "score": 0, "max": 8, "note": "Assente - Dominio vulnerabile allo spoofing"})
-        recommendations.append("Implementare DMARC immediatamente")
+        details.append({"area": "DMARC (Art. 21.2.a)", "score": 0, "max": 8, "note": "Assente"})
 
     spf = scan_results.get("spf", {})
     if spf.get("presente"):
         technical_score += 4
-        details.append({"area": "SPF", "score": 4, "max": 4, "note": "Configurato"})
+        details.append({"area": "SPF (Art. 21.2.a)", "score": 4, "max": 4, "note": "Configurato"})
     else:
-        details.append({"area": "SPF", "score": 0, "max": 4, "note": "Assente"})
-        recommendations.append("Configurare record SPF")
+        details.append({"area": "SPF (Art. 21.2.a)", "score": 0, "max": 4, "note": "Assente"})
 
     dnssec = scan_results.get("dnssec", {})
     if dnssec.get("enabled"):
         technical_score += 3
-        details.append({"area": "DNSSEC", "score": 3, "max": 3, "note": "Abilitato"})
+        details.append({"area": "DNSSEC (Art. 21.2.a)", "score": 3, "max": 3, "note": "Abilitato"})
     else:
-        details.append({"area": "DNSSEC", "score": 0, "max": 3, "note": "Non abilitato"})
+        details.append({"area": "DNSSEC (Art. 21.2.a)", "score": 0, "max": 3, "note": "Non abilitato"})
 
     # ============================================================
-    # INFRASTRUTTURA E RETE (max 30 punti)
-    # ============================================================
-
-    # Porte e servizi esposti (10 punti)
-    ports = scan_results.get("ports", {})
-    total_open = ports.get("total_open", 0)
-    if total_open <= 3:
-        technical_score += 10
-        infra_details.append({"area": "Porte Esposte", "score": 10, "max": 10, "note": f"{total_open} porte aperte"})
-    elif total_open <= 8:
-        technical_score += 5
-        infra_details.append({"area": "Porte Esposte", "score": 5, "max": 10, "note": f"{total_open} porte aperte"})
-    else:
-        technical_score += 0
-        infra_details.append({"area": "Porte Esposte", "score": 0, "max": 10, "note": f"{total_open} porte aperte - Superficie elevata!"})
-
-    # Accesso remoto (8 punti)
-    remote = scan_results.get("remote_access", {})
-    remote_exposed = remote.get("count", 0)
-    if remote_exposed == 0:
-        technical_score += 8
-        infra_details.append({"area": "Accesso Remoto", "score": 8, "max": 8, "note": "Nessun servizio esposto"})
-    elif remote_exposed == 1:
-        technical_score += 3
-        infra_details.append({"area": "Accesso Remoto", "score": 3, "max": 8, "note": f"{remote_exposed} servizio esposto"})
-    else:
-        technical_score += 0
-        infra_details.append({"area": "Accesso Remoto", "score": 0, "max": 8, "note": f"{remote_exposed} servizi esposti!"})
-
-    # Database (7 punti)
-    databases = scan_results.get("databases", {})
-    db_exposed = databases.get("count", 0)
-    if db_exposed == 0:
-        technical_score += 7
-        infra_details.append({"area": "Database", "score": 7, "max": 7, "note": "Nessun database esposto"})
-    else:
-        technical_score += 0
-        infra_details.append({"area": "Database", "score": 0, "max": 7, "note": f"{db_exposed} database esposti!"})
-
-    # File sharing (5 punti)
-    fileshare = scan_results.get("file_sharing", {})
-    fs_exposed = fileshare.get("count", 0)
-    if fs_exposed == 0:
-        technical_score += 5
-        infra_details.append({"area": "File Sharing", "score": 5, "max": 5, "note": "Nessun servizio esposto"})
-    else:
-        technical_score += 0
-        infra_details.append({"area": "File Sharing", "score": 0, "max": 5, "note": f"{fs_exposed} servizi esposti!"})
-
-    # ============================================================
-    # QUESTIONARIO (max 30 punti - 3 punti per domanda)
+    # QUESTIONARIO (max 30 punti)
     # ============================================================
     questionnaire_score = 0
     questionnaire_details = []
 
     question_map = {
-        "q1": "Registrazione al portale ACN",
-        "q2": "Designazione Punto di Contatto",
-        "q3": "CISO o referente sicurezza",
-        "q4": "Analisi dei rischi documentata",
-        "q5": "Gestione e notifica incidenti",
-        "q6": "Politiche di sicurezza e accessi",
-        "q7": "Patch management e vulnerabilità",
-        "q8": "Verifica sicurezza fornitori",
-        "q9": "Formazione cybersicurezza",
-        "q10": "Certificazioni di sicurezza"
+        "q1": {"label": "Registrazione al portale ACN", "art": "Art. 7 D.Lgs. 138/2024"},
+        "q2": {"label": "Designazione Punto di Contatto", "art": "Art. 7 D.Lgs. 138/2024"},
+        "q3": {"label": "CISO o referente sicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
+        "q4": {"label": "Analisi dei rischi documentata", "art": "Art. 21.2.a"},
+        "q5": {"label": "Gestione e notifica incidenti", "art": "Art. 21.2.b"},
+        "q6": {"label": "Politiche di sicurezza e accessi (MFA, backup, cifratura)", "art": "Art. 21.2.i, h"},
+        "q7": {"label": "Patch management e gestione vulnerabilità", "art": "Art. 21.2.e"},
+        "q8": {"label": "Verifica sicurezza fornitori", "art": "Art. 21.2.d"},
+        "q9": {"label": "Formazione cybersicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
+        "q10": {"label": "Certificazioni di sicurezza", "art": "ISO 27001 / Linee guida ACN"}
     }
 
     if questions:
-        for key, label in question_map.items():
+        for key, info in question_map.items():
             answer = questions.get(key, "no")
             if answer in ["si", "si_interno", "si_esterno"]:
                 questionnaire_score += 3
-                questionnaire_details.append({"question": label, "answer": "si"})
+                questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "si"})
             elif answer in ["parziale", "saltuaria", "in_corso"]:
                 questionnaire_score += 1.5
-                questionnaire_details.append({"question": label, "answer": "parziale"})
+                questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "parziale"})
             else:
-                questionnaire_details.append({"question": label, "answer": "no"})
-                if key != "q10":
-                    recommendations.append(f"Completare: {label}")
+                questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "no"})
 
     # ============================================================
-    # CISO (bonus da Step 1, max 5 punti)
+    # CISO (max 5 punti)
     # ============================================================
     ciso = company_data.get("ciso", "Assente")
     ciso_score = 5 if ciso == "Interno" else 3 if ciso == "Consulente esterno" else 0
-    if ciso == "Assente":
-        recommendations.append("Nominare un CISO o referente sicurezza (obbligo NIS2)")
 
     # ============================================================
     # VERIFICA EMAIL (max 10 punti)
     # ============================================================
     email_score = 0
-    if company_data.get("dns_verified"):
-        email_score += 5
-    if company_data.get("otp_verified"):
-        email_score += 5
+    if company_data.get("dns_verified"): email_score += 5
+    if company_data.get("otp_verified"): email_score += 5
 
     # ============================================================
     # PUNTEGGIO TOTALE
@@ -266,14 +196,8 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
     total_score = technical_score + questionnaire_score + ciso_score + email_score
     total_score = min(total_score, 100)
 
-    # ============================================================
-    # CATEGORIA NIS2
-    # ============================================================
     nis2_info = get_nis2_category(company_data.get("ateco", ""), company_data.get("employees", ""))
 
-    # ============================================================
-    # RISCHIO COMPLESSIVO
-    # ============================================================
     if nis2_info["category"] == "Essenziale" and total_score < 50:
         overall_risk, risk_color = "CRITICO", "error"
     elif nis2_info["category"] == "Essenziale" and total_score < 75:
@@ -293,15 +217,10 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
 
     return {
         "total_score": total_score,
-        "technical_score": technical_score,
-        "questionnaire_score": questionnaire_score,
-        "ciso_score": ciso_score,
-        "email_score": email_score,
         "nis2_category": nis2_info,
         "overall_risk": overall_risk,
         "risk_color": risk_color,
         "details": details,
-        "infra_details": infra_details,
         "questionnaire_details": questionnaire_details,
         "recommendations": recommendations,
         "certifications": cert_status
