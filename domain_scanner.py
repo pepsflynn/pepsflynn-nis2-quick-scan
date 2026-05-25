@@ -5,33 +5,45 @@ import requests
 from datetime import datetime
 import re
 
+# Timeout globali (secondi)
+_CONNECT_TIMEOUT = 5
+_HTTP_TIMEOUT = 10
+_DNS_LIFETIME = 3
+
+
 def scan_domain(domain):
     """
-    Esegue scan tecnici avanzati sul dominio aziendale.
+    Esegue scan tecnici sul dominio aziendale.
     Restituisce un dizionario con tutti i risultati.
     """
     results = {
-        "ssl": check_ssl(domain),
-        "headers": check_security_headers(domain),
-        "dmarc": check_dmarc(domain),
-        "spf": check_spf(domain),
-        "breach": check_breach(domain),
-        "cms": detect_cms(domain),
-        "cookies": check_cookies(domain),
-        "ports": check_common_ports(domain),
-        "dnssec": check_dnssec(domain)
+        "ssl":            check_ssl(domain),
+        "headers":        check_security_headers(domain),
+        "dmarc":          check_dmarc(domain),
+        "spf":            check_spf(domain),
+        "dnssec":         check_dnssec(domain),
+        "cms":            detect_cms(domain),
+        "waf":            detect_waf(domain),
+        "redirect":       check_http_redirect(domain),
+        "exposed_files":  check_exposed_files(domain),
+        "tls_version":    check_tls_version(domain),
+        "subdomain":      check_subdomain_takeover(domain),
     }
     return results
 
+
+# ============================================================
+# CHECK ESISTENTI — corretti
+# ============================================================
+
 def check_ssl(domain):
-    """Verifica validita' certificato SSL e dettagli"""
+    """Verifica validità certificato SSL e giorni alla scadenza."""
     try:
         ctx = ssl.create_default_context()
-        with socket.create_connection((domain, 443), timeout=5) as sock:
+        with socket.create_connection((domain, 443), timeout=_CONNECT_TIMEOUT) as sock:
             with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
                 cert = ssock.getpeercert()
-                expiry = datetime.strptime(cert['notAfter'], "%b %d %H:%M:%S %Y %Z")
-                issued = datetime.strptime(cert['notBefore'], "%b %d %H:%M:%S %Y %Z")
+                expiry = datetime.strptime(cert['notAfter'],  "%b %d %H:%M:%S %Y %Z")
                 days_left = (expiry - datetime.now()).days
                 issuer = dict(x[0] for x in cert.get('issuer', []))
                 return {
@@ -40,40 +52,45 @@ def check_ssl(domain):
                     "issuer": issuer.get('organizationName', 'Sconosciuto'),
                     "status": "ok" if days_left > 30 else "warning" if days_left > 0 else "expired"
                 }
-    except:
+    except Exception:
         return {"valid": False, "status": "error"}
 
+
 def check_security_headers(domain):
-    """Verifica header di sicurezza HTTP estesi"""
+    """Verifica gli header HTTP di sicurezza."""
     headers_to_check = {
-        "Strict-Transport-Security": "HSTS assente - Rischio attacchi man-in-the-middle",
-        "Content-Security-Policy": "CSP assente - Rischio attacchi XSS e injection",
-        "X-Frame-Options": "Protezione clickjacking assente",
-        "X-Content-Type-Options": "Protezione MIME sniffing assente",
-        "Referrer-Policy": "Referrer-Policy assente - Possibile leak di informazioni",
-        "Permissions-Policy": "Permissions-Policy assente - API browser non controllate",
-        "Cross-Origin-Opener-Policy": "COOP assente - Rischio attacchi cross-origin",
-        "Cross-Origin-Resource-Policy": "CORP assente - Risorse accessibili da altri domini"
+        "Strict-Transport-Security":    "HSTS assente — rischio attacchi MITM",
+        "Content-Security-Policy":      "CSP assente — rischio XSS/injection",
+        "X-Frame-Options":              "Protezione clickjacking assente",
+        "X-Content-Type-Options":       "Protezione MIME sniffing assente",
+        "Referrer-Policy":              "Referrer-Policy assente — possibile info leak",
+        "Permissions-Policy":           "Permissions-Policy assente — API browser non controllate",
+        "Cross-Origin-Opener-Policy":   "COOP assente — rischio attacchi cross-origin",
+        "Cross-Origin-Resource-Policy": "CORP assente — risorse accessibili da altri domini",
     }
-    
     results = {}
     try:
-        response = requests.get(f"https://{domain}", timeout=10, allow_redirects=True)
+        response = requests.get(
+            f"https://{domain}", timeout=_HTTP_TIMEOUT, allow_redirects=True
+        )
         for header, message in headers_to_check.items():
             if header in response.headers:
-                results[header] = {"status": "presente", "value": response.headers[header][:100]}
+                results[header] = {
+                    "status": "presente",
+                    "value": response.headers[header][:100]
+                }
             else:
                 results[header] = {"status": "assente", "value": message}
-    except:
+    except Exception:
         for header in headers_to_check:
             results[header] = {"status": "errore", "value": "Impossibile verificare"}
-    
     return results
 
+
 def check_dmarc(domain):
-    """Verifica record DMARC e policy"""
+    """Verifica record DMARC e policy."""
     try:
-        answers = dns.resolver.resolve(f"_dmarc.{domain}", 'TXT')
+        answers = dns.resolver.resolve(f"_dmarc.{domain}", 'TXT', lifetime=_DNS_LIFETIME)
         for rdata in answers:
             text = str(rdata)
             if "v=DMARC1" in text:
@@ -82,172 +99,272 @@ def check_dmarc(domain):
                     policy = "reject"
                 elif "p=quarantine" in text:
                     policy = "quarantine"
-                return {
-                    "presente": True,
-                    "policy": policy,
-                    "record": text[:200]
-                }
+                return {"presente": True, "policy": policy, "record": text[:200]}
         return {"presente": False, "policy": "nessuna"}
-    except:
-        return {"presente": False, "policy": "nessuna", "errore": "Record DMARC non trovato"}
+    except Exception:
+        return {"presente": False, "policy": "nessuna"}
+
 
 def check_spf(domain):
-    """Verifica record SPF"""
+    """Verifica record SPF."""
     try:
-        answers = dns.resolver.resolve(domain, 'TXT')
+        answers = dns.resolver.resolve(domain, 'TXT', lifetime=_DNS_LIFETIME)
         for rdata in answers:
             text = str(rdata)
             if "v=spf1" in text:
-                return {"presente": True, "record": text[:200]}
-        return {"presente": False}
-    except:
-        return {"presente": False, "errore": "Record SPF non trovato"}
-
-def check_breach(domain):
-    """
-    Verifica se il dominio appare in data breach pubblici.
-    Usa l'API gratuita di Have I Been Pwned (metodo sicuro con k-anonymity).
-    """
-    # Metodo semplificato: verifichiamo se ci sono risultati noti
-    # In produzione useremmo l'API k-anonymity di HIBP
-    try:
-        url = f"https://haveibeenpwned.com/api/v3/breaches?domain={domain}"
-        headers = {"User-Agent": "NIS2-QuickScan"}
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            breaches = response.json()
-            if breaches:
-                breach_names = [b.get('Name', 'Sconosciuto') for b in breaches[:5]]
+                softfail = "~all" in text
                 return {
-                    "found": True,
-                    "count": len(breaches),
-                    "breaches": breach_names,
-                    "message": f"Dominio trovato in {len(breaches)} data breach noti!"
+                    "presente": True,
+                    "record": text[:200],
+                    "softfail": softfail
                 }
-        return {"found": False, "count": 0, "message": "Nessun data breach pubblico trovato"}
-    except:
-        return {"found": False, "count": 0, "message": "Verifica non riuscita"}
+        return {"presente": False}
+    except Exception:
+        return {"presente": False}
+
+
+def check_dnssec(domain):
+    """Verifica se DNSSEC è abilitato."""
+    try:
+        parts = domain.split('.')
+        main_domain = '.'.join(parts[-2:]) if len(parts) > 2 else domain
+        dns.resolver.resolve(main_domain, 'DNSKEY', lifetime=_DNS_LIFETIME)
+        return {"enabled": True, "message": "DNSSEC abilitato"}
+    except Exception:
+        return {"enabled": False, "message": "DNSSEC non rilevato — rischio avvelenamento DNS"}
+
 
 def detect_cms(domain):
     """
-    Rileva CMS e tecnologie dal sito web.
-    Verifica WordPress, Joomla, Drupal, ecc.
+    Rileva CMS e tecnologie esposte e popola la lista 'risks'
+    usata dal motore di scoring.
     """
-    result = {"detected": [], "versioni": {}}
-    
+    result = {"detected": [], "risks": []}
     try:
-        response = requests.get(f"https://{domain}", timeout=10)
+        response = requests.get(
+            f"https://{domain}", timeout=_HTTP_TIMEOUT, allow_redirects=True
+        )
         html = response.text.lower()
         headers = response.headers
-        
+
         # WordPress
         if "wp-content" in html or "wp-includes" in html:
             result["detected"].append("WordPress")
-            # Cerca versione nel meta generator
-            version_match = re.search(r'wordpress (\d+\.\d+\.\d+)', html)
+            # Versione esposta nel meta generator
+            version_match = re.search(r'<meta[^>]+generator[^>]+wordpress\s+([\d.]+)', html)
             if version_match:
-                result["versioni"]["WordPress"] = version_match.group(1)
-        
+                ver = version_match.group(1)
+                result["risks"].append(f"WordPress versione {ver} esposta nel sorgente")
+            # Pannello admin esposto
+            try:
+                admin_resp = requests.get(
+                    f"https://{domain}/wp-login.php", timeout=5, allow_redirects=False
+                )
+                if admin_resp.status_code == 200:
+                    result["risks"].append("Pannello admin WordPress (/wp-login.php) accessibile")
+            except Exception:
+                pass
+
         # Joomla
         if "joomla" in html or "option=com_" in html:
             result["detected"].append("Joomla")
-        
+            try:
+                admin_resp = requests.get(
+                    f"https://{domain}/administrator/", timeout=5, allow_redirects=False
+                )
+                if admin_resp.status_code == 200:
+                    result["risks"].append("Pannello admin Joomla (/administrator/) accessibile")
+            except Exception:
+                pass
+
         # Drupal
-        if "drupal" in html or 'sites/all/' in html or 'sites/default/' in html:
+        if "drupal" in html or "sites/all/" in html or "sites/default/" in html:
             result["detected"].append("Drupal")
-        
-        # Nginx/Apache detection
+
+        # Server disclosure
         server = headers.get('Server', '')
-        if 'nginx' in server.lower():
-            result["detected"].append("Nginx")
-        if 'apache' in server.lower():
-            result["detected"].append("Apache")
-        
-        # PHP detection
-        if 'x-powered-by' in headers:
-            result["detected"].append(f"PHP ({headers['x-powered-by']})")
-        
+        if server:
+            # Versione specifica esposta (es. "Apache/2.4.51") è un rischio
+            if re.search(r'[\d.]{3,}', server):
+                result["risks"].append(f"Versione server esposta nell'header: {server[:60]}")
+            if 'nginx' in server.lower():
+                result["detected"].append("Nginx")
+            if 'apache' in server.lower():
+                result["detected"].append("Apache")
+
+        # PHP version disclosure
+        powered_by = headers.get('X-Powered-By', '')
+        if powered_by:
+            result["detected"].append(f"PHP ({powered_by})")
+            result["risks"].append(f"Versione PHP esposta nell'header X-Powered-By: {powered_by[:60]}")
+
         if not result["detected"]:
             result["detected"].append("Nessun CMS/tecnologia riconosciuta")
-    
-    except:
+
+    except Exception:
         result["detected"].append("Rilevamento CMS non riuscito")
-    
+
     return result
 
-def check_cookies(domain):
-    """
-    Verifica la presenza di cookie di sessione con flag di sicurezza.
-    """
-    result = {"secure_cookies": 0, "httponly_cookies": 0, "samesite_cookies": 0, "total_cookies": 0}
-    
-    try:
-        response = requests.get(f"https://{domain}", timeout=10)
-        cookies = response.cookies
-        result["total_cookies"] = len(cookies)
-        
-        for cookie in cookies:
-            if cookie.secure:
-                result["secure_cookies"] += 1
-            if cookie.has_nonstandard_attr('HttpOnly'):
-                result["httponly_cookies"] += 1
-            if cookie.has_nonstandard_attr('SameSite'):
-                result["samesite_cookies"] += 1
-    except:
-        pass
-    
-    return result
 
-def check_common_ports(domain):
+# ============================================================
+# WAF — mancante, aggiunto
+# ============================================================
+
+def detect_waf(domain):
     """
-    Verifica porte comuni aperte (scan rapido).
+    Rileva la presenza di un WAF analizzando header e comportamento
+    del server di fronte a payload sospetti.
     """
-    common_ports = {
-        21: "FTP",
-        22: "SSH",
-        25: "SMTP",
-        80: "HTTP",
-        443: "HTTPS",
-        3306: "MySQL",
-        3389: "RDP",
-        8080: "HTTP-Alt",
-        8443: "HTTPS-Alt"
+    waf_signatures = {
+        'Cloudflare':  ['cf-ray', 'cf-cache-status'],
+        'Sucuri':      ['x-sucuri-id', 'x-sucuri-cache'],
+        'Akamai':      ['x-akamai-transformed', 'akamai-cache-status'],
+        'AWS WAF':     ['x-amzn-requestid', 'x-amz-cf-id'],
+        'Imperva':     ['x-cdn', 'x-iinfo'],
+        'Barracuda':   ['barra_counter_session'],
+        'Fastly':      ['x-fastly-request-id'],
     }
-    
-    open_ports = []
-    for port, service in common_ports.items():
+    try:
+        response = requests.get(f"https://{domain}", timeout=_HTTP_TIMEOUT)
+        resp_headers = {k.lower(): v for k, v in response.headers.items()}
+
+        for provider, signatures in waf_signatures.items():
+            if any(sig in resp_headers for sig in signatures):
+                return {"protected": True, "provider": provider}
+
+        # Test comportamentale: richiesta con payload XSS
+        test_url = f"https://{domain}/?q=<script>alert(1)</script>"
+        test_resp = requests.get(test_url, timeout=5, allow_redirects=False)
+        if test_resp.status_code in (403, 406, 429, 503):
+            return {"protected": True, "provider": "Sconosciuto (blocco rilevato)"}
+
+    except Exception:
+        pass
+
+    return {"protected": False, "provider": None}
+
+
+# ============================================================
+# NUOVI CHECK
+# ============================================================
+
+def check_http_redirect(domain):
+    """
+    Verifica che HTTP forzi il redirect a HTTPS (Art. 21.2.h).
+    Controlla anche che il redirect sia permanente (301/308).
+    """
+    try:
+        response = requests.get(
+            f"http://{domain}", timeout=_HTTP_TIMEOUT, allow_redirects=False
+        )
+        code = response.status_code
+        location = response.headers.get('Location', '')
+        if code in (301, 302, 307, 308) and location.startswith('https://'):
+            return {
+                "redirects": True,
+                "permanent": code in (301, 308),
+                "code": code,
+                "note": "Redirect HTTPS corretto"
+            }
+        return {
+            "redirects": False,
+            "code": code,
+            "note": "HTTP attivo senza redirect a HTTPS"
+        }
+    except Exception:
+        return {"redirects": False, "note": "Verifica non riuscita"}
+
+
+def check_exposed_files(domain):
+    """
+    Verifica l'accessibilità pubblica di file sensibili (Art. 21.2.e).
+    Restituisce la lista dei file esposti trovati.
+    """
+    sensitive_paths = [
+        '.env',
+        '.git/config',
+        'phpinfo.php',
+        'backup.zip',
+        'backup.sql',
+        'dump.sql',
+        'wp-config.php.bak',
+        'config.php.bak',
+        '.htaccess',
+        'web.config.bak',
+        'composer.json',
+        'package.json',
+        'Dockerfile',
+    ]
+    exposed = []
+    for path in sensitive_paths:
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
-            result = sock.connect_ex((domain, port))
-            if result == 0:
-                open_ports.append({"port": port, "service": service})
-            sock.close()
-        except:
+            r = requests.get(
+                f"https://{domain}/{path}",
+                timeout=5,
+                allow_redirects=False,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            # 200 + contenuto non banale = file esposto
+            if r.status_code == 200 and len(r.content) > 20:
+                exposed.append(path)
+        except Exception:
             pass
-    
     return {
-        "open_ports": open_ports,
-        "count": len(open_ports),
-        "risk": "Alto" if len(open_ports) > 5 else "Medio" if len(open_ports) > 3 else "Basso"
+        "exposed": exposed,
+        "count": len(exposed),
+        "safe": len(exposed) == 0
     }
 
-def check_dnssec(domain):
+
+def check_tls_version(domain):
     """
-    Verifica se il dominio ha DNSSEC abilitato.
+    Verifica la versione TLS negoziata e segnala protocolli deprecati
+    (Art. 21.2.h — standard crittografici).
     """
     try:
-        # Estrai il dominio principale
-        parts = domain.split('.')
-        if len(parts) > 2:
-            main_domain = '.'.join(parts[-2:])
-        else:
-            main_domain = domain
-        
-        answers = dns.resolver.resolve(main_domain, 'DNSKEY')
-        if answers:
-            return {"enabled": True, "message": "DNSSEC abilitato sul dominio"}
-    except:
-        pass
-    
-    return {"enabled": False, "message": "DNSSEC non rilevato - Rischio avvelenamento DNS"}
+        ctx = ssl.create_default_context()
+        with socket.create_connection((domain, 443), timeout=_CONNECT_TIMEOUT) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                version = ssock.version()   # es. 'TLSv1.3', 'TLSv1.2'
+                secure = version in ('TLSv1.2', 'TLSv1.3')
+                return {
+                    "version": version,
+                    "secure": secure,
+                    "supports_tls13": version == 'TLSv1.3',
+                    "note": "Versione sicura" if secure else f"Versione deprecata: {version}"
+                }
+    except Exception:
+        return {"version": "sconosciuta", "secure": False, "supports_tls13": False}
+
+
+def check_subdomain_takeover(domain):
+    """
+    Rileva sottodomini con record CNAME pendenti (dangling CNAME)
+    vulnerabili a subdomain takeover (Art. 21.2.e).
+    """
+    common_subdomains = [
+        'www', 'mail', 'webmail', 'ftp', 'vpn', 'admin',
+        'api', 'dev', 'staging', 'test', 'beta', 'app',
+        'portal', 'shop', 'cdn', 'status',
+    ]
+    dangling = []
+    for sub in common_subdomains:
+        fqdn = f"{sub}.{domain}"
+        try:
+            cname_answers = dns.resolver.resolve(fqdn, 'CNAME', lifetime=_DNS_LIFETIME)
+            for rdata in cname_answers:
+                target = str(rdata.target).rstrip('.')
+                # CNAME presente: verifica se il target è ancora attivo
+                try:
+                    dns.resolver.resolve(target, 'A', lifetime=_DNS_LIFETIME)
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                    dangling.append({"subdomain": fqdn, "cname": target})
+        except Exception:
+            pass   # sottodominio inesistente o nessun CNAME: ok
+
+    return {
+        "dangling": dangling,
+        "count": len(dangling),
+        "safe": len(dangling) == 0
+    }

@@ -147,6 +147,58 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
         details.append({"area": "DNSSEC (Art. 21.2.a)", "score": 0, "max": 3, "note": "Non abilitato"})
 
     # ============================================================
+    # NUOVI CHECK (max 15 punti)
+    # ============================================================
+
+    redirect = scan_results.get("redirect", {})
+    if redirect.get("redirects"):
+        pts = 3 if redirect.get("permanent") else 2
+        technical_score += pts
+        details.append({"area": "HTTP→HTTPS redirect (Art. 21.2.h)", "score": pts, "max": 3,
+                         "note": "Permanente (301)" if redirect.get("permanent") else "Temporaneo (302)"})
+    else:
+        details.append({"area": "HTTP→HTTPS redirect (Art. 21.2.h)", "score": 0, "max": 3,
+                         "note": "HTTP attivo senza redirect"})
+        recommendations.append("Configurare redirect permanente HTTP→HTTPS (Art. 21.2.h)")
+
+    exposed_files = scan_results.get("exposed_files", {})
+    if exposed_files.get("safe", True):
+        technical_score += 3
+        details.append({"area": "File sensibili (Art. 21.2.e)", "score": 3, "max": 3,
+                         "note": "Nessun file sensibile esposto"})
+    else:
+        count = exposed_files.get("count", 0)
+        exposed = ", ".join(exposed_files.get("exposed", [])[:3])
+        details.append({"area": "File sensibili (Art. 21.2.e)", "score": 0, "max": 3,
+                         "note": f"{count} file esposti: {exposed}"})
+        recommendations.append(f"Rimuovere file sensibili esposti: {exposed} (Art. 21.2.e)")
+
+    tls = scan_results.get("tls_version", {})
+    if tls.get("secure"):
+        pts = 5 if tls.get("supports_tls13") else 3
+        technical_score += pts
+        ver_note = tls.get("version", "sicura")
+        if tls.get("supports_tls13"):
+            ver_note += " — TLS 1.3 supportato"
+        details.append({"area": "Versione TLS (Art. 21.2.h)", "score": pts, "max": 5, "note": ver_note})
+    else:
+        details.append({"area": "Versione TLS (Art. 21.2.h)", "score": 0, "max": 5,
+                         "note": f"Versione deprecata: {tls.get('version', 'sconosciuta')}"})
+        recommendations.append("Aggiornare a TLS 1.2/1.3 e disabilitare protocolli obsoleti (Art. 21.2.h)")
+
+    subdomain = scan_results.get("subdomain", {})
+    if subdomain.get("safe", True):
+        technical_score += 4
+        details.append({"area": "Subdomain takeover (Art. 21.2.e)", "score": 4, "max": 4,
+                         "note": "Nessun CNAME pendente rilevato"})
+    else:
+        count = subdomain.get("count", 0)
+        dangling = [d["subdomain"] for d in subdomain.get("dangling", [])[:2]]
+        details.append({"area": "Subdomain takeover (Art. 21.2.e)", "score": 0, "max": 4,
+                         "note": f"{count} CNAME pendente/i: {', '.join(dangling)}"})
+        recommendations.append(f"Risolvere CNAME pendenti: {', '.join(dangling)} (Art. 21.2.e)")
+
+    # ============================================================
     # QUESTIONARIO (max 30 punti)
     # ============================================================
     questionnaire_score = 0

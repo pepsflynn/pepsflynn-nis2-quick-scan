@@ -142,7 +142,7 @@ HTML_TEMPLATE = r"""
 
         <div class="cloud-info-box">
             <p style="font-size:13px;"><strong>☁️ Versione Cloud - Analisi della superficie pubblica</strong></p>
-            <p style="font-size:12px;color:#a0aec0;">Questa versione web esegue scan del dominio pubblico e DNS. Per l'analisi completa della rete interna, scarica la versione portable.</p>
+            <p style="font-size:12px;color:#a0aec0;">Questa versione web esegue <strong style="color:#63b3ed;">11 controlli automatici</strong>: SSL/TLS, header sicurezza, WAF, CMS, DMARC, SPF, DNSSEC, redirect HTTPS, file sensibili esposti, versione TLS e subdomain takeover. Per l'analisi della rete interna scarica la versione portable.</p>
         </div>
 
         <div class="step-indicator">
@@ -182,7 +182,12 @@ HTML_TEMPLATE = r"""
         <!-- STEP 2: SCAN WEB -->
         <div class="card hidden" id="step2">
             <h3>Scan Tecnici - Versione Cloud</h3>
-            <p style="color:#a0aec0; margin-bottom:15px; font-size:13px;">☁️ Scan della superficie pubblica. Rete locale ed endpoint richiedono la <strong>versione portable</strong>.</p>
+            <p style="color:#a0aec0; margin-bottom:10px; font-size:13px;">☁️ Verifica e conferma la tua identità per avviare i <strong>11 controlli automatici</strong> sul dominio.</p>
+            <div style="background:rgba(56,161,105,0.08);border:1px solid rgba(56,161,105,0.3);border-radius:8px;padding:10px 14px;margin-bottom:15px;font-size:12px;color:#a0aec0;line-height:1.7;">
+                <strong style="color:#68d391;">✅ Inclusi in questa versione cloud:</strong><br>
+                SSL/TLS &amp; versione protocollo • Header sicurezza HTTP • Redirect HTTPS •
+                WAF • CMS e tecnologie • File sensibili esposti • DMARC • SPF • DNSSEC • Subdomain takeover
+            </div>
             
             <div class="verification-section">
                 <div class="section-title">📧 Verifica DNS Email</div>
@@ -202,8 +207,8 @@ HTML_TEMPLATE = r"""
             </div>
             
             <div style="background:rgba(43,108,176,0.1);border:1px solid rgba(43,108,176,0.3);border-radius:8px;padding:12px;margin-top:15px;">
-                <p style="font-size:13px;color:#63b3ed;"><strong>🔍 Scan di rete ed endpoint non disponibili nella versione cloud</strong></p>
-                <p style="font-size:12px;color:#a0aec0;">RDP, SMB, porte, firewall, antivirus, BitLocker e altri controlli interni sono disponibili solo nella <strong>versione portable</strong> da eseguire sulla rete aziendale.</p>
+                <p style="font-size:13px;color:#63b3ed;"><strong>🏢 Rete interna — solo versione portable</strong></p>
+                <p style="font-size:12px;color:#a0aec0;">RDP, SMB, firewall, antivirus, BitLocker, porte interne e crittografia endpoint richiedono la <strong>versione portable</strong> da eseguire sulla rete aziendale.</p>
             </div>
 
             <button onclick="goToStep3()" id="goto-step3" disabled class="btn-full" style="margin-top:15px;">Prosegui con il Questionario</button>
@@ -559,26 +564,96 @@ HTML_TEMPLATE = r"""
 
         function displayResults(d) {
             var s = d.score, rc = s.risk_color === "ok" ? "green" : s.risk_color === "warning" ? "yellow" : "red";
+
+            // ---- HEADER REPORT ----
             var h = "<div class='card' style='text-align:center;'><h2>Report Quick Scan NIS2</h2>";
             h += "<div class='score-circle score-" + rc + "'>" + s.total_score + "/100</div>";
-            h += "<p class='" + s.risk_color + "'>Rischio: " + s.overall_risk + "</p>";
-            h += "<p style='font-size:12px;color:#a0aec0;'>☁️ Versione Cloud - Solo superficie pubblica</p></div>";
-            
-            h += "<div class='card'><h3>Dati</h3><table>";
-            h += "<tr><td>Azienda</td><td>" + d.company.name + "</td></tr>";
-            h += "<tr><td>Settore</td><td>" + d.company.ateco + "</td></tr>";
+            h += "<p class='" + s.risk_color + "' style='font-size:18px;margin:5px 0;'>Rischio: <strong>" + s.overall_risk + "</strong></p>";
+            if (s.nis2_category) {
+                var catColor = s.nis2_category.category === "Essenziale" ? "#fc8181" : s.nis2_category.category === "Importante" ? "#f6e05e" : "#63b3ed";
+                h += "<p style='font-size:13px;margin:4px 0;'>Categoria NIS2: <strong style='color:" + catColor + ";'>" + s.nis2_category.category + "</strong> &mdash; " + s.nis2_category.description + "</p>";
+            }
+            h += "<p style='font-size:11px;color:#718096;margin-top:8px;'>☁️ Versione Cloud &mdash; 11 controlli automatici sul dominio pubblico</p></div>";
+
+            // ---- DATI AZIENDA ----
+            h += "<div class='card'><h3>Dati Aziendali</h3><table>";
+            h += "<tr><td>Azienda</td><td><strong>" + d.company.name + "</strong></td></tr>";
+            h += "<tr><td>Settore ATECO</td><td>" + d.company.ateco + "</td></tr>";
             h += "<tr><td>Dipendenti</td><td>" + d.company.employees + "</td></tr>";
-            h += "<tr><td>CISO</td><td>" + (d.company.ciso || "N/D") + "</td></tr></table></div>";
-            
-            h += "<div class='card'><h3>Scan Tecnici</h3><table><tr><th>Test</th><th>Punteggio</th><th>Note</th></tr>";
-            for (var i = 0; i < s.details.length; i++) { var dd = s.details[i], c = dd.score === dd.max ? "ok" : dd.score === 0 ? "error" : "warning"; h += "<tr><td>" + dd.area + "</td><td class='" + c + "'>" + dd.score + "/" + dd.max + "</td><td>" + dd.note + "</td></tr>"; }
+            h += "<tr><td>Responsabile sicurezza</td><td>" + (d.company.ciso || "N/D") + "</td></tr>";
+            h += "<tr><td>Dominio analizzato</td><td>" + d.domain + "</td></tr></table></div>";
+
+            // ---- SCAN TECNICI raggruppati ----
+            var groups = [
+                { label: "🌐 Sito web", keys: ["SSL", "Header", "CMS", "WAF", "HTTP", "File", "TLS", "Subdomain"] },
+                { label: "📧 Email / DNS",  keys: ["DMARC", "SPF", "DNSSEC"] }
+            ];
+            h += "<div class='card'><h3>Scan Tecnici Automatici</h3>";
+
+            // calcola totale tecnico
+            var techTotal = 0, techMax = 0;
+            for (var i = 0; i < s.details.length; i++) { techTotal += s.details[i].score; techMax += s.details[i].max; }
+            h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:10px;'>Punteggio tecnico: <strong>" + techTotal + "/" + techMax + "</strong></p>";
+
+            // raggruppa per prefisso area
+            var webItems = [], emailItems = [], otherItems = [];
+            var webKeys   = ["SSL", "Header", "CMS", "WAF", "HTTP", "File", "TLS", "Subdomain"];
+            var emailKeys = ["DMARC", "SPF", "DNSSEC"];
+            for (var i = 0; i < s.details.length; i++) {
+                var dd = s.details[i];
+                var isWeb = webKeys.some(function(k){ return dd.area.toUpperCase().indexOf(k.toUpperCase()) >= 0; });
+                var isEmail = emailKeys.some(function(k){ return dd.area.toUpperCase().indexOf(k.toUpperCase()) >= 0; });
+                if (isWeb) webItems.push(dd);
+                else if (isEmail) emailItems.push(dd);
+                else otherItems.push(dd);
+            }
+
+            function renderGroup(label, items) {
+                if (!items.length) return "";
+                var out = "<tr><td colspan='3' style='background:rgba(43,108,176,0.15);font-weight:600;font-size:13px;padding:8px 10px;color:#63b3ed;'>" + label + "</td></tr>";
+                for (var i = 0; i < items.length; i++) {
+                    var dd = items[i];
+                    var c = dd.score === dd.max ? "ok" : dd.score === 0 ? "error" : "warning";
+                    var pct = dd.max > 0 ? Math.round((dd.score/dd.max)*100) : 0;
+                    var bar = "<div style='width:60px;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;display:inline-block;vertical-align:middle;margin-left:6px;'><div style='width:" + pct + "%;height:100%;border-radius:3px;background:" + (c==="ok"?"#68d391":c==="warning"?"#f6e05e":"#fc8181") + ";'></div></div>";
+                    out += "<tr><td style='font-size:13px;'>" + dd.area + "</td><td class='" + c + "' style='white-space:nowrap;'>" + dd.score + "/" + dd.max + bar + "</td><td style='font-size:12px;color:#a0aec0;'>" + dd.note + "</td></tr>";
+                }
+                return out;
+            }
+
+            h += "<table><tr><th>Controllo</th><th>Punteggio</th><th>Dettaglio</th></tr>";
+            h += renderGroup("🌐 Sito web & infrastruttura", webItems);
+            h += renderGroup("📧 Email & DNS", emailItems);
+            if (otherItems.length) h += renderGroup("📋 Altro", otherItems);
             h += "</table></div>";
-            
-            h += "<div class='card'><h3>Questionario</h3><table>";
-            for (var k = 0; k < s.questionnaire_details.length; k++) { var q = s.questionnaire_details[k]; h += "<tr><td>" + q.question + "</td><td class='" + (q.answer === "si" ? "ok" : "error") + "'>" + (q.answer === "si" ? "Si" : "No") + "</td></tr>"; }
+
+            // ---- QUESTIONARIO ----
+            h += "<div class='card'><h3>Questionario di Autovalutazione</h3><table>";
+            for (var k = 0; k < s.questionnaire_details.length; k++) {
+                var q = s.questionnaire_details[k];
+                var cls = q.answer === "si" ? "ok" : q.answer === "parziale" ? "warning" : "error";
+                var label = q.answer === "si" ? "✅ Sì" : q.answer === "parziale" ? "⚠️ Parziale" : "❌ No";
+                h += "<tr><td style='font-size:13px;'>" + q.question + "</td><td class='" + cls + "' style='white-space:nowrap;font-size:13px;'>" + label + "</td></tr>";
+            }
             h += "</table></div>";
-            
-            if (s.recommendations.length > 0) { h += "<div class='card'><h3>Azioni Prioritarie</h3><ul>"; for (var m = 0; m < s.recommendations.length; m++) h += "<li>" + s.recommendations[m] + "</li>"; h += "</ul></div>"; }
+
+            // ---- AZIONI PRIORITARIE ----
+            if (s.recommendations && s.recommendations.length > 0) {
+                h += "<div class='card'><h3>⚠️ Azioni Prioritarie</h3><ul style='padding-left:18px;'>";
+                for (var m = 0; m < s.recommendations.length; m++) h += "<li style='margin-bottom:6px;font-size:13px;'>" + s.recommendations[m] + "</li>";
+                h += "</ul></div>";
+            }
+
+            // ---- CERTIFICAZIONI ----
+            if (s.certifications && s.certifications.length > 0) {
+                h += "<div class='card'><h3>Equivalenza Certificazioni</h3><table><tr><th>Certificazione</th><th>Readiness</th><th>Note</th></tr>";
+                for (var c2 = 0; c2 < s.certifications.length; c2++) {
+                    var cert = s.certifications[c2];
+                    var cc = cert.readiness === "Alta" ? "ok" : cert.readiness === "Media" ? "warning" : "error";
+                    h += "<tr><td>" + cert.certification + "</td><td class='" + cc + "'>" + cert.readiness + "</td><td style='font-size:12px;'>" + cert.note + "</td></tr>";
+                }
+                h += "</table></div>";
+            }
             
             // BOX DOWNLOAD PORTABLE
             h += "<div class='download-box'>";
