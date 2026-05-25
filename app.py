@@ -696,9 +696,50 @@ HTML_TEMPLATE = r"""
 
             // ---- AZIONI PRIORITARIE ----
             if (s.recommendations && s.recommendations.length > 0) {
-                h += "<div class='card'><h3>⚠️ Azioni Prioritarie</h3><ul style='padding-left:18px;'>";
+                h += "<div class='card'><h3>⚠️ Azioni Prioritarie Tecniche</h3><ul style='padding-left:18px;'>";
                 for (var m = 0; m < s.recommendations.length; m++) h += "<li style='margin-bottom:6px;font-size:13px;'>" + s.recommendations[m] + "</li>";
                 h += "</ul></div>";
+            }
+
+            // ---- GAP ANALYSIS QUESTIONARIO ----
+            if (s.questionnaire_gaps && s.questionnaire_gaps.length > 0) {
+                var weightColors = { "CRITICO": "#fc8181", "ALTO": "#f6ad55", "MEDIO": "#f6e05e", "BASSO": "#63b3ed" };
+                var weightBg    = { "CRITICO": "rgba(252,129,129,0.08)", "ALTO": "rgba(246,173,85,0.08)", "MEDIO": "rgba(246,224,94,0.08)", "BASSO": "rgba(99,179,237,0.08)" };
+                var weightBorder= { "CRITICO": "rgba(252,129,129,0.3)", "ALTO": "rgba(246,173,85,0.3)", "MEDIO": "rgba(246,224,94,0.3)", "BASSO": "rgba(99,179,237,0.2)" };
+
+                var critici = s.questionnaire_gaps.filter(function(g){ return g.weight === "CRITICO"; });
+                var alti    = s.questionnaire_gaps.filter(function(g){ return g.weight === "ALTO"; });
+                var medi    = s.questionnaire_gaps.filter(function(g){ return g.weight === "MEDIO"; });
+
+                h += "<div class='card'>";
+                h += "<h3>📋 Analisi Lacune Governance NIS2</h3>";
+                h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:16px;'>Peso delle lacune in base alla categoria NIS2 dell'organizzazione (<strong style='color:" + (s.nis2_category.category === 'Essenziale' ? '#fc8181' : '#f6e05e') + ";'>" + s.nis2_category.category + "</strong>).</p>";
+
+                function renderGaps(gaps) {
+                    var out = "";
+                    for (var gi = 0; gi < gaps.length; gi++) {
+                        var g = gaps[gi];
+                        var bc = weightBg[g.weight] || "rgba(255,255,255,0.04)";
+                        var br = weightBorder[g.weight] || "rgba(255,255,255,0.1)";
+                        var wc = weightColors[g.weight] || "#a0aec0";
+                        var answerLabel = g.answer === "parziale" ? "⚠️ Parziale" : "❌ Assente";
+                        out += "<div style='background:" + bc + ";border:1px solid " + br + ";border-radius:8px;padding:12px 14px;margin-bottom:10px;'>";
+                        out += "<div style='display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;'>";
+                        out += "<span style='background:" + wc + ";color:#0a1628;font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;'>" + g.weight + "</span>";
+                        out += "<strong style='font-size:13px;color:#e2e8f0;'>" + g.label + "</strong>";
+                        out += "<span style='font-size:11px;color:#718096;margin-left:auto;'>" + answerLabel + " &mdash; " + g.art + "</span>";
+                        out += "</div>";
+                        out += "<p style='font-size:12px;color:#a0aec0;margin:0 0 4px;'>🔴 <em>" + g.consequence + "</em></p>";
+                        out += "<p style='font-size:12px;color:#68d391;margin:0;'>🛠️ Versione portable: " + g.portable + "</p>";
+                        out += "</div>";
+                    }
+                    return out;
+                }
+
+                if (critici.length) { h += "<div style='font-size:12px;font-weight:700;color:#fc8181;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.06em;'>Lacune critiche</div>"; h += renderGaps(critici); }
+                if (alti.length)    { h += "<div style='font-size:12px;font-weight:700;color:#f6ad55;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.06em;'>Lacune alte</div>";    h += renderGaps(alti); }
+                if (medi.length)    { h += "<div style='font-size:12px;font-weight:700;color:#f6e05e;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.06em;'>Lacune medie</div>";   h += renderGaps(medi); }
+                h += "</div>";
             }
 
             // ---- CERTIFICAZIONI ----
@@ -711,6 +752,48 @@ HTML_TEMPLATE = r"""
                 }
                 h += "</table></div>";
             }
+
+            // ---- ALERT DINAMICO CTA ----
+            var gaps = s.questionnaire_gaps || [];
+            var critCount = gaps.filter(function(g){ return g.weight === "CRITICO"; }).length;
+            var cat = s.nis2_category ? s.nis2_category.category : "Altro";
+            var employees = d.company.employees || "";
+
+            var alertBg, alertBorder, alertIcon, alertTitle, alertMsg;
+            if (critCount >= 2 && cat === "Essenziale") {
+                alertBg = "rgba(252,129,129,0.1)"; alertBorder = "rgba(252,129,129,0.5)";
+                alertIcon = "🚨"; alertTitle = "ATTENZIONE — Organizzazione Essenziale con lacune critiche";
+                alertMsg = "La tua organizzazione rientra nelle <strong>entità essenziali NIS2</strong> e presenta <strong>" + critCount + " lacune critiche</strong>. In caso di incidente o audit, le sanzioni possono raggiungere il <strong>2% del fatturato globale o 10 milioni di euro</strong>. È necessario un piano di adeguamento immediato.";
+            } else if (critCount >= 1 || cat === "Essenziale") {
+                alertBg = "rgba(246,173,85,0.1)"; alertBorder = "rgba(246,173,85,0.5)";
+                alertIcon = "⚠️"; alertTitle = "Intervento prioritario richiesto";
+                alertMsg = "Sono presenti lacune di governance che devono essere colmate prima della scadenza NIS2. La versione portable include strumenti specifici per i processi mancanti.";
+            } else {
+                alertBg = "rgba(99,179,237,0.08)"; alertBorder = "rgba(99,179,237,0.3)";
+                alertIcon = "🔍"; alertTitle = "Analisi completa consigliata";
+                alertMsg = "Il Quick Scan copre la superficie pubblica. Per una valutazione NIS2 completa — inclusa rete interna, endpoint e processi — utilizza la versione portable.";
+            }
+
+            var critLabels = gaps.filter(function(g){ return g.weight === "CRITICO"; }).map(function(g){ return g.label; });
+            var gapListHtml = critLabels.length
+                ? "<ul style='padding-left:18px;margin:10px 0;'>" + critLabels.map(function(l){ return "<li style='font-size:13px;color:#e2e8f0;margin-bottom:4px;'>❌ " + l + "</li>"; }).join("") + "</ul>"
+                : "";
+
+            h += "<div style='background:" + alertBg + ";border:2px solid " + alertBorder + ";border-radius:12px;padding:24px;margin-top:20px;'>";
+            h += "<h3 style='color:#e2e8f0;margin-top:0;font-size:18px;'>" + alertIcon + " " + alertTitle + "</h3>";
+            h += "<p style='font-size:14px;color:#cbd5e0;margin-bottom:10px;'>" + alertMsg + "</p>";
+            h += gapListHtml;
+            h += "<p style='font-size:13px;color:#68d391;font-weight:600;margin:14px 0 6px;'>La versione portable include, oltre agli 11 controlli automatici:</p>";
+            h += "<ul style='padding-left:18px;margin:0 0 18px;'>";
+            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>📋 Analisi dei rischi guidata con reportistica PDF NIS2</li>";
+            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>🔔 Workflow notifica incidenti ad ACN (24h/72h)</li>";
+            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>🔗 Questionario e scoring sicurezza fornitori</li>";
+            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>👤 Modulo CISO virtuale con KPI e roadmap</li>";
+            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>🖥️ Scan rete interna: porte, endpoint, BitLocker, firewall</li>";
+            h += "</ul>";
+            h += "<a href='#' class='btn-download' onclick='alert("Contattaci per la versione portable."); return false;'>⬇️ RICHIEDI LA VERSIONE PORTABLE</a>";
+            h += "<p style='font-size:11px;color:#718096;margin-top:10px;text-align:center;'>Licenza a pagamento • Include 30 giorni di aggiornamenti e supporto</p>";
+            h += "</div>";
             
             // BOX DOWNLOAD PORTABLE
             h += "<div class='download-box'>";

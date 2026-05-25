@@ -13,6 +13,84 @@ NIS2_SECTORS = {
 }
 
 
+# Peso NIS2 per ogni domanda del questionario
+# weight: CRITICO / ALTO / MEDIO per categoria Essenziale e Importante
+QUESTIONNAIRE_GAPS = {
+    "q1": {
+        "label": "Registrazione ACN e Punto di Contatto",
+        "art": "Art. 7 D.Lgs. 138/2024",
+        "weight_essenziale": "CRITICO",
+        "weight_importante": "CRITICO",
+        "consequence": "Obbligo legale — sanzioni fino al 2% del fatturato globale o 10 M€",
+        "portable": "Checklist obblighi ACN, scadenzario registrazione e gestione documentale"
+    },
+    "q2": {
+        "label": "CISO / Responsabile Sicurezza Informatica",
+        "art": "Art. 20 D.Lgs. 138/2024",
+        "weight_essenziale": "CRITICO",
+        "weight_importante": "ALTO",
+        "consequence": "Mancanza di governance — responsabilità penale per gli organi direttivi",
+        "portable": "Modulo CISO virtuale: roadmap, KPI sicurezza, reportistica per il CdA"
+    },
+    "q3": {
+        "label": "Analisi dei Rischi documentata",
+        "art": "Art. 21.2.a",
+        "weight_essenziale": "CRITICO",
+        "weight_importante": "CRITICO",
+        "consequence": "Impossibilità di dimostrare conformità in audit — sanzione certa",
+        "portable": "Analisi dei rischi guidata (asset, minacce, impatto) con report PDF NIS2"
+    },
+    "q4": {
+        "label": "Gestione e Notifica Incidenti (entro 24h ad ACN)",
+        "art": "Art. 21.2.b + Art. 24",
+        "weight_essenziale": "CRITICO",
+        "weight_importante": "CRITICO",
+        "consequence": "Mancata notifica incidente = sanzione automatica fino a 10 M€",
+        "portable": "Workflow notifica incidenti, template per ACN, log degli eventi di sicurezza"
+    },
+    "q5": {
+        "label": "Politiche di accesso, MFA, backup e cifratura",
+        "art": "Art. 21.2.i, h",
+        "weight_essenziale": "ALTO",
+        "weight_importante": "ALTO",
+        "consequence": "Accesso non autorizzato a sistemi critici, perdita dati irreversibile",
+        "portable": "Verifica MFA, policy password, cifratura endpoint e stato backup"
+    },
+    "q6": {
+        "label": "Patch Management e gestione vulnerabilità",
+        "art": "Art. 21.2.e",
+        "weight_essenziale": "ALTO",
+        "weight_importante": "MEDIO",
+        "consequence": "Sistemi non aggiornati = vettore primario di attacchi ransomware",
+        "portable": "Inventario asset, stato patch OS/software, scansione vulnerabilità interne"
+    },
+    "q7": {
+        "label": "Verifica sicurezza dei fornitori (supply chain)",
+        "art": "Art. 21.2.d",
+        "weight_essenziale": "ALTO",
+        "weight_importante": "ALTO",
+        "consequence": "Il 62% degli attacchi NIS2 parte dalla supply chain — responsabilità estesa",
+        "portable": "Questionario fornitori, scoring supply chain, registro contratti con SLA sicurezza"
+    },
+    "q8": {
+        "label": "Formazione cybersicurezza per dipendenti",
+        "art": "Art. 20 D.Lgs. 138/2024",
+        "weight_essenziale": "MEDIO",
+        "weight_importante": "MEDIO",
+        "consequence": "Il phishing sfrutta la mancanza di formazione — vettore nel 90% degli attacchi",
+        "portable": "Moduli di formazione NIS2, simulazioni phishing, tracciamento completamento"
+    },
+    "q9": {
+        "label": "Certificazioni di sicurezza riconosciute",
+        "art": "Linee Guida ACN",
+        "weight_essenziale": "MEDIO",
+        "weight_importante": "BASSO",
+        "consequence": "Senza certificazioni, difficile dimostrare conformità a clienti e partner",
+        "portable": "Roadmap certificazione ISO 27001 con gap analysis e piano di implementazione"
+    },
+}
+
+
 def get_nis2_category(ateco_code, employees_str):
     if not ateco_code or ateco_code == "N/D":
         return {"category": "N/D", "description": "Impossibile determinare senza ATECO"}
@@ -257,6 +335,9 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
                          "note": f"{count} CNAME pendente/i: {', '.join(dangling)}"})
         recommendations.append(f"Risolvere CNAME pendenti: {', '.join(dangling)} (Art. 21.2.e)")
 
+    # nis2_info serve anche nel questionario per pesare i gap
+    nis2_info = get_nis2_category(company_data.get("ateco", ""), company_data.get("employees", ""))
+
     # ============================================================
     # QUESTIONARIO (max 30 punti)
     # ============================================================
@@ -275,6 +356,7 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
         "q9": {"label": "Certificazioni di sicurezza", "art": "ISO 27001 / Linee guida ACN"}
     }
 
+    questionnaire_gaps = []
     if questions:
         for key, info in question_map.items():
             answer = questions.get(key, "no")
@@ -284,8 +366,29 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
             elif answer in ["parziale", "saltuaria", "in_corso"]:
                 questionnaire_score += 1.5
                 questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "parziale"})
+                # Gap parziale: inserisce con severità ridotta di un livello
+                gap_def = QUESTIONNAIRE_GAPS.get(key, {})
+                if gap_def:
+                    nis2_cat = nis2_info.get("category", "Altro")
+                    base_weight = gap_def.get("weight_essenziale" if nis2_cat == "Essenziale" else "weight_importante", "MEDIO")
+                    # Parziale: declassa di un livello
+                    weight = {"CRITICO": "ALTO", "ALTO": "MEDIO", "MEDIO": "BASSO"}.get(base_weight, "BASSO")
+                    questionnaire_gaps.append({
+                        "key": key, "label": gap_def["label"], "art": gap_def["art"],
+                        "answer": "parziale", "weight": weight,
+                        "consequence": gap_def["consequence"], "portable": gap_def["portable"]
+                    })
             else:
                 questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "no"})
+                gap_def = QUESTIONNAIRE_GAPS.get(key, {})
+                if gap_def:
+                    nis2_cat = nis2_info.get("category", "Altro")
+                    weight = gap_def.get("weight_essenziale" if nis2_cat == "Essenziale" else "weight_importante", "MEDIO")
+                    questionnaire_gaps.append({
+                        "key": key, "label": gap_def["label"], "art": gap_def["art"],
+                        "answer": "no", "weight": weight,
+                        "consequence": gap_def["consequence"], "portable": gap_def["portable"]
+                    })
 
     # ============================================================
     # CISO (max 5 punti)
@@ -306,8 +409,6 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
     total_score = technical_score + questionnaire_score + ciso_score + email_score
     total_score = min(total_score, 100)
 
-    nis2_info = get_nis2_category(company_data.get("ateco", ""), company_data.get("employees", ""))
-
     if nis2_info["category"] == "Essenziale" and total_score < 50:
         overall_risk, risk_color = "CRITICO", "error"
     elif nis2_info["category"] == "Essenziale" and total_score < 75:
@@ -325,6 +426,10 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
 
     cert_status = check_certification_equivalence(scan_results)
 
+    # Ordina gaps per priorità: CRITICO > ALTO > MEDIO > BASSO
+    _order = {"CRITICO": 0, "ALTO": 1, "MEDIO": 2, "BASSO": 3}
+    questionnaire_gaps.sort(key=lambda g: _order.get(g["weight"], 4))
+
     return {
         "total_score": total_score,
         "nis2_category": nis2_info,
@@ -332,6 +437,7 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
         "risk_color": risk_color,
         "details": details,
         "questionnaire_details": questionnaire_details,
+        "questionnaire_gaps": questionnaire_gaps,
         "recommendations": recommendations,
         "certifications": cert_status
     }
