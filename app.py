@@ -853,7 +853,7 @@ def _domain_resolves(domain):
     """Verifica che il dominio risponda ad una query DNS A o CNAME."""
     for record_type in ('A', 'CNAME'):
         try:
-            dns.resolver.resolve(domain, record_type, lifetime=3)
+            dns.resolver.resolve(domain, record_type, lifetime=1)
             return True
         except Exception:
             pass
@@ -862,32 +862,27 @@ def _domain_resolves(domain):
 
 def find_company_domain(company_name):
     """
-    Prova sistematicamente varianti del dominio aziendale e restituisce
-    il primo che risponde al DNS, oppure la variante .it come fallback.
+    Cerca il dominio aziendale provando solo le varianti più probabili
+    con timeout ridotto. Max 6 tentativi DNS (< 6 secondi totali).
     """
     base = _clean_company_name(company_name)
     if not base:
         return None
 
-    # Genera candidati: nome intero, poi senza trattini, poi prima parola
-    bases = [base]
-    no_dash = base.replace('-', '')
-    if no_dash != base:
-        bases.append(no_dash)
     first_word = base.split('-')[0]
-    if first_word not in bases and len(first_word) > 2:
-        bases.append(first_word)
 
-    tlds = ['.it', '.com', '.eu', '.net', '.org']
+    # Candidati prioritari: solo .it e .com
+    candidates = []
+    for b in ([base] + ([first_word] if first_word != base and len(first_word) > 2 else [])):
+        candidates.append(b + '.it')
+        candidates.append(b + '.com')
 
-    for b in bases:
-        for tld in tlds:
-            candidate = b + tld
-            if _domain_resolves(candidate):
-                return candidate
+    for candidate in candidates[:6]:  # max 6 query DNS
+        if _domain_resolves(candidate):
+            return candidate
 
-    # Nessun dominio verificato → restituisce il fallback più probabile
-    return bases[0] + '.it'
+    # Fallback immediato
+    return base + '.it'
 
 
 @app.route('/api/test-lookup', methods=['POST'])
