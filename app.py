@@ -192,7 +192,8 @@ HTML_TEMPLATE = r"""
             <div class="verification-section">
                 <div class="section-title">📧 Verifica DNS Email</div>
                 <label>Email aziendale</label>
-                <input type="email" id="email" placeholder="es. sicurezza@azienda.it">
+                <input type="email" id="email" placeholder="es. sicurezza@azienda.it" oninput="checkEmailDomain()">
+                <div id="email-domain-warning" style="display:none;font-size:12px;padding:7px 10px;border-radius:6px;margin:4px 0 6px;"></div>
                 <button class="btn-small" onclick="verifyDNS()" id="btn-dns">Verifica DNS</button>
                 <div id="dns-result"></div>
             </div>
@@ -470,20 +471,76 @@ HTML_TEMPLATE = r"""
 
         function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
 
+        function checkEmailDomain() {
+            var email = document.getElementById("email").value.trim();
+            var siteDomain = document.getElementById("domain").value.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            var warn = document.getElementById("email-domain-warning");
+            if (!email || !siteDomain || email.indexOf('@') < 0) { warn.style.display = 'none'; return; }
+            var emailDomain = email.split('@')[1] || '';
+            // considera match anche se il dominio email è un sottodominio del dominio sito o viceversa
+            var match = emailDomain === siteDomain ||
+                        emailDomain.endsWith('.' + siteDomain) ||
+                        siteDomain.endsWith('.' + emailDomain);
+            if (!match) {
+                warn.style.display = 'block';
+                warn.style.background = 'rgba(246,224,94,0.1)';
+                warn.style.border = '1px solid rgba(246,224,94,0.4)';
+                warn.style.color = '#f6e05e';
+                warn.innerHTML = '⚠️ Il dominio email (<strong>' + emailDomain + '</strong>) è diverso dal dominio aziendale (<strong>' + siteDomain + '</strong>). I risultati DNS si riferiranno al dominio email.';
+            } else {
+                warn.style.display = 'block';
+                warn.style.background = 'rgba(56,161,105,0.1)';
+                warn.style.border = '1px solid rgba(56,161,105,0.3)';
+                warn.style.color = '#68d391';
+                warn.innerHTML = '✅ Dominio email coerente con il dominio aziendale.';
+            }
+        }
+
         function verifyDNS() {
             var email = document.getElementById("email").value.trim();
             if (!email) { alert("Inserisci un indirizzo email"); return; }
+            checkEmailDomain();
             var btn = document.getElementById("btn-dns");
-            btn.disabled = true; btn.textContent = "Analisi...";
+            btn.disabled = true; btn.textContent = "Analisi DNS...";
             fetch("/api/verify-dns", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email}) })
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 if (d.success) {
-                    var r = d.results, h = "<table style='margin-top:10px;'>";
-                    h += "<tr><td>MX</td><td class='"+(r.mx_valid?"ok":"error")+"'>"+(r.mx_valid?"OK":"NO")+"</td></tr>";
-                    h += "<tr><td>SPF</td><td class='"+(r.spf_valid?"ok":"error")+"'>"+(r.spf_valid?"OK":"NO")+"</td></tr>";
-                    h += "<tr><td>DMARC</td><td class='"+(r.dmarc_valid?"ok":"error")+"'>"+(r.dmarc_valid?"OK "+r.dmarc_policy:"NO")+"</td></tr>";
-                    h += "<tr><td>DKIM</td><td class='"+(r.dkim_verified?"ok":"error")+"'>"+(r.dkim_verified?"OK":"NO")+"</td></tr>";
+                    var r = d.results;
+                    var levelColor = r.level === "CONFORME" ? "#68d391" : r.level === "PARZIALE" ? "#f6e05e" : "#fc8181";
+                    var h = "<div style='margin:10px 0 8px;padding:8px 12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:13px;'>";
+                    h += "Dominio analizzato: <strong>" + r.domain + "</strong> &nbsp;|&nbsp; ";
+                    h += "Livello: <strong style='color:" + levelColor + ";'>" + r.level + "</strong>";
+                    h += " &nbsp;(" + r.score + " pt)</div>";
+                    h += "<table style='margin-top:4px;font-size:13px;'>";
+
+                    // MX
+                    h += "<tr><td><strong>MX</strong> &mdash; server di posta</td>";
+                    h += "<td class='" + (r.mx_valid?"ok":"error") + "'>" + (r.mx_valid ? "✅ OK (" + r.mx_count + " record)" : "❌ Assente") + "</td></tr>";
+
+                    // SPF
+                    var spfClass = !r.spf_valid ? "error" : r.spf_strict ? "ok" : "warning";
+                    var spfLabel = !r.spf_valid ? "❌ Assente" : (r.spf_strict ? "✅ OK (strict -all)" : "⚠️ Presente (~all, permissivo)");
+                    h += "<tr><td><strong>SPF</strong> &mdash; mittenti autorizzati</td><td class='" + spfClass + "'>" + spfLabel + "</td></tr>";
+
+                    // DMARC
+                    var dmarcClass = !r.dmarc_valid ? "error" : r.dmarc_policy === "reject" ? "ok" : r.dmarc_policy === "quarantine" ? "warning" : "warning";
+                    var dmarcLabel = !r.dmarc_valid ? "❌ Assente" :
+                        "✅ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : " (no reporting)");
+                    if (r.dmarc_policy === "reject") dmarcLabel = "✅ " + dmarcLabel.replace("✅ ","");
+                    else if (r.dmarc_valid && r.dmarc_policy !== "reject") dmarcLabel = "⚠️ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : "");
+                    h += "<tr><td><strong>DMARC</strong> &mdash; anti-spoofing</td><td class='" + dmarcClass + "'>" + dmarcLabel + "</td></tr>";
+
+                    // DKIM
+                    var dkimLabel = r.dkim_verified
+                        ? "✅ OK (selettore: <em>" + r.dkim_selector + "</em>)"
+                        : "❌ Non rilevato (selettori comuni verificati)";
+                    h += "<tr><td><strong>DKIM</strong> &mdash; firma digitale</td><td class='" + (r.dkim_verified?"ok":"error") + "'>" + dkimLabel + "</td></tr>";
+
+                    // MTA-STS
+                    h += "<tr><td><strong>MTA-STS</strong> &mdash; cifratura SMTP</td>";
+                    h += "<td class='" + (r.mta_sts?"ok":"warning") + "'>" + (r.mta_sts ? "✅ Abilitato" : "⚠️ Non configurato") + "</td></tr>";
+
                     h += "</table>";
                     document.getElementById("dns-result").innerHTML = h;
                     dnsVerified = true; checkBoth();
@@ -794,31 +851,94 @@ def test_lookup():
 def verify_dns():
     email = request.json.get('email', '')
     domain = email.split('@')[-1] if '@' in email else ''
-    results = {"email": email, "domain": domain, "mx_valid": False, "spf_valid": False, "dmarc_valid": False, "dmarc_policy": "", "dkim_verified": False, "score": 0}
+    results = {
+        "email": email, "domain": domain,
+        "mx_valid": False, "mx_count": 0,
+        "spf_valid": False, "spf_strict": False, "spf_record": "",
+        "dmarc_valid": False, "dmarc_policy": "", "dmarc_rua": False,
+        "dkim_verified": False, "dkim_selector": "",
+        "mta_sts": False,
+        "score": 0
+    }
+
+    # MX
     try:
-        if dns.resolver.resolve(domain, 'MX'): results["mx_valid"] = True; results["score"] += 5
-    except: pass
+        mx_answers = dns.resolver.resolve(domain, 'MX', lifetime=3)
+        results["mx_valid"] = True
+        results["mx_count"] = len(list(mx_answers))
+        results["score"] += 5
+    except Exception:
+        pass
+
+    # SPF
     try:
-        for rdata in dns.resolver.resolve(domain, 'TXT'):
-            if "v=spf1" in str(rdata): results["spf_valid"] = True; results["score"] += 5; break
-    except: pass
+        for rdata in dns.resolver.resolve(domain, 'TXT', lifetime=3):
+            t = str(rdata)
+            if "v=spf1" in t:
+                results["spf_valid"] = True
+                results["spf_record"] = t[:120]
+                results["spf_strict"] = "-all" in t
+                results["score"] += 5 if results["spf_strict"] else 3
+                break
+    except Exception:
+        pass
+
+    # DMARC
     try:
-        for rdata in dns.resolver.resolve(f"_dmarc.{domain}", 'TXT'):
+        for rdata in dns.resolver.resolve(f"_dmarc.{domain}", 'TXT', lifetime=3):
             t = str(rdata)
             if "v=DMARC1" in t:
-                results["dmarc_valid"] = True; results["score"] += 5
-                results["dmarc_policy"] = "reject" if "p=reject" in t else "quarantine" if "p=quarantine" in t else "none"
+                results["dmarc_valid"] = True
+                results["dmarc_rua"] = "rua=" in t
+                if "p=reject" in t:
+                    results["dmarc_policy"] = "reject"
+                    results["score"] += 8
+                elif "p=quarantine" in t:
+                    results["dmarc_policy"] = "quarantine"
+                    results["score"] += 5
+                else:
+                    results["dmarc_policy"] = "none"
+                    results["score"] += 2
                 break
-    except: pass
-    try:
-        dns.resolver.resolve(f"default._domainkey.{domain}", 'TXT')
-        results["dkim_verified"] = True; results["score"] += 5
-    except:
+    except Exception:
+        pass
+
+    # DKIM — prova i selettori più comuni
+    dkim_selectors = [
+        "default", "google", "mail", "smtp", "dkim",
+        "selector1", "selector2",   # Microsoft 365
+        "k1", "k2",                  # Mailchimp/Mandrill
+        "s1", "s2",
+        "email",                     # SendGrid
+        "mx",                        # Zoho
+        "protonmail",
+        "amazonses",
+    ]
+    for sel in dkim_selectors:
         try:
-            dns.resolver.resolve(f"google._domainkey.{domain}", 'TXT')
-            results["dkim_verified"] = True; results["score"] += 3
-        except: pass
-    results["level"] = "CONFORME" if results["score"] >= 20 else "PARZIALE" if results["score"] >= 12 else "NON CONFORME"
+            dns.resolver.resolve(f"{sel}._domainkey.{domain}", 'TXT', lifetime=2)
+            results["dkim_verified"] = True
+            results["dkim_selector"] = sel
+            results["score"] += 7
+            break
+        except Exception:
+            continue
+
+    # MTA-STS (RFC 8461) — protegge il canale SMTP in ingresso
+    try:
+        for rdata in dns.resolver.resolve(f"_mta-sts.{domain}", 'TXT', lifetime=3):
+            if "v=STSv1" in str(rdata):
+                results["mta_sts"] = True
+                results["score"] += 5
+                break
+    except Exception:
+        pass
+
+    results["level"] = (
+        "CONFORME"     if results["score"] >= 25 else
+        "PARZIALE"     if results["score"] >= 12 else
+        "NON CONFORME"
+    )
     return jsonify({"success": True, "results": results})
 
 @app.route('/api/send-otp', methods=['POST'])
