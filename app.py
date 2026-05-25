@@ -168,12 +168,14 @@ HTML_TEMPLATE = r"""
                 <option value="61">ICT - TLC</option><option value="62">ICT - Servizi</option><option value="63">ICT - DC</option>
                 <option value="64">Finanza</option><option value="84">PA</option><option value="altro">Altro</option>
             </select>
+            <div id="ateco-hint" style="display:none; font-size:12px; margin-top:-6px; margin-bottom:10px; padding:8px 10px; border-radius:6px;"></div>
             <label>Numero dipendenti</label>
             <select id="employees">
                 <option value="">Seleziona...</option>
                 <option value="1-10">1-10</option><option value="11-50">11-50</option>
                 <option value="51-250">51-250</option><option value="250+">Oltre 250</option>
             </select>
+            <div id="employees-hint" style="display:none; font-size:12px; margin-top:-6px; margin-bottom:10px; padding:8px 10px; border-radius:6px;"></div>
             <button onclick="goToStep2()">Avanti</button>
         </div>
 
@@ -356,8 +358,14 @@ HTML_TEMPLATE = r"""
                                             domainField.disabled = false;
                                         }, 300);
                                     }
-                                    if (d.ateco) autoSelectAteco(d.ateco);
-                                    if (d.employees_count) autoSelectEmployees(d.employees_count);
+                                    var atecoOk = d.ateco ? autoSelectAteco(d.ateco) : false;
+                                    var empOk = (d.employees_count !== null && d.employees_count !== undefined) ? autoSelectEmployees(d.employees_count) : false;
+                                    showFieldHint('ateco-hint', atecoOk,
+                                        '✅ Settore ATECO rilevato automaticamente: <strong>' + d.ateco + '</strong>',
+                                        '⚠️ Settore ATECO non disponibile nei registri pubblici — selezionalo manualmente.');
+                                    showFieldHint('employees-hint', empOk,
+                                        '✅ Numero dipendenti rilevato automaticamente.',
+                                        '⚠️ Numero dipendenti non disponibile nei registri pubblici — selezionalo manualmente.');
                                 } else {
                                     preview.innerHTML = '<p style="color:#f6e05e;">Partita IVA non trovata nei registri pubblici</p>';
                                 }
@@ -379,9 +387,25 @@ HTML_TEMPLATE = r"""
             document.getElementById("step1-indicator").classList.add("completed");
         }
 
+        function showFieldHint(id, ok, okMsg, failMsg) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.style.display = 'block';
+            if (ok) {
+                el.style.background = 'rgba(56,161,105,0.12)';
+                el.style.border = '1px solid rgba(56,161,105,0.4)';
+                el.style.color = '#68d391';
+                el.innerHTML = okMsg;
+            } else {
+                el.style.background = 'rgba(246,224,94,0.08)';
+                el.style.border = '1px solid rgba(246,224,94,0.35)';
+                el.style.color = '#f6e05e';
+                el.innerHTML = failMsg;
+            }
+        }
+
         function autoSelectAteco(code) {
-            if (!code) return;
-            // Mappa prefissi ATECO alle opzioni della <select>
+            if (!code) return false;
             var map = [
                 { prefix: '35', value: '35' },
                 { prefix: '49', value: '49' }, { prefix: '50', value: '49' },
@@ -393,34 +417,36 @@ HTML_TEMPLATE = r"""
                 { prefix: '64', value: '64' }, { prefix: '65', value: '64' }, { prefix: '66', value: '64' },
                 { prefix: '84', value: '84' }
             ];
-            var clean = code.replace('.', '');
+            var clean = code.replace(/\./g, '');
             var sel = document.getElementById('ateco');
-            if (sel.value) return; // non sovrascrivere se già compilato
+            if (sel.value) return true; // già compilato, considera ok
             for (var i = 0; i < map.length; i++) {
                 if (clean.startsWith(map[i].prefix)) {
                     sel.value = map[i].value;
                     sel.style.borderColor = '#68d391';
                     setTimeout(function() { sel.style.borderColor = ''; }, 2000);
-                    return;
+                    return true;
                 }
             }
             sel.value = 'altro';
             sel.style.borderColor = '#68d391';
             setTimeout(function() { sel.style.borderColor = ''; }, 2000);
+            return true;
         }
 
         function autoSelectEmployees(count) {
-            if (!count && count !== 0) return;
+            if (count === null || count === undefined) return false;
             var n = parseInt(count);
-            if (isNaN(n)) return;
+            if (isNaN(n)) return false;
             var sel = document.getElementById('employees');
-            if (sel.value) return; // non sovrascrivere se già compilato
+            if (sel.value) return true; // già compilato, considera ok
             if (n <= 10)       sel.value = '1-10';
             else if (n <= 50)  sel.value = '11-50';
             else if (n <= 250) sel.value = '51-250';
             else               sel.value = '250+';
             sel.style.borderColor = '#68d391';
             setTimeout(function() { sel.style.borderColor = ''; }, 2000);
+            return true;
         }
 
         function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
