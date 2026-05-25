@@ -358,13 +358,21 @@ HTML_TEMPLATE = r"""
                                             domainField.disabled = false;
                                         }, 300);
                                     }
-                                    var atecoOk = d.ateco ? autoSelectAteco(d.ateco) : false;
+                                    var atecoResult = d.ateco ? autoSelectAteco(d.ateco) : false;
                                     var empOk = (d.employees_count !== null && d.employees_count !== undefined) ? autoSelectEmployees(d.employees_count) : false;
-                                    showFieldHint('ateco-hint', atecoOk,
-                                        '✅ Settore ATECO rilevato automaticamente: <strong>' + d.ateco + '</strong>',
-                                        '⚠️ Settore ATECO non disponibile nei registri pubblici — selezionalo manualmente.');
+                                    if (atecoResult && atecoResult.found) {
+                                        showFieldHint('ateco-hint', true,
+                                            '✅ Settore ATECO rilevato: <strong>' + atecoResult.code + '</strong> — ' + atecoResult.label,
+                                            '');
+                                    } else if (atecoResult && atecoResult.code) {
+                                        showFieldHint('ateco-hint', false, '',
+                                            '⚠️ Codice ATECO rilevato (<strong>' + atecoResult.code + '</strong>) non rientra nelle categorie NIS2 — seleziona il settore manualmente.');
+                                    } else {
+                                        showFieldHint('ateco-hint', false, '',
+                                            '⚠️ Codice ATECO non disponibile nei registri pubblici — seleziona il settore manualmente.');
+                                    }
                                     showFieldHint('employees-hint', empOk,
-                                        '✅ Numero dipendenti rilevato automaticamente.',
+                                        '✅ Numero dipendenti rilevato automaticamente: <strong>' + d.employees_count + '</strong>.',
                                         '⚠️ Numero dipendenti non disponibile nei registri pubblici — selezionalo manualmente.');
                                 } else {
                                     preview.innerHTML = '<p style="color:#f6e05e;">Partita IVA non trovata nei registri pubblici</p>';
@@ -404,34 +412,40 @@ HTML_TEMPLATE = r"""
             }
         }
 
+        var ATECO_MAP = [
+            { prefix: '35', value: '35', label: 'Energia' },
+            { prefix: '49', value: '49', label: 'Trasporti' },
+            { prefix: '50', value: '49', label: 'Trasporti' },
+            { prefix: '51', value: '49', label: 'Trasporti' },
+            { prefix: '52', value: '49', label: 'Trasporti' },
+            { prefix: '53', value: '49', label: 'Trasporti' },
+            { prefix: '86', value: '86', label: 'Sanità' },
+            { prefix: '87', value: '86', label: 'Sanità' },
+            { prefix: '88', value: '86', label: 'Sanità' },
+            { prefix: '61', value: '61', label: 'ICT - TLC' },
+            { prefix: '62', value: '62', label: 'ICT - Servizi' },
+            { prefix: '63', value: '63', label: 'ICT - DC' },
+            { prefix: '64', value: '64', label: 'Finanza' },
+            { prefix: '65', value: '64', label: 'Finanza' },
+            { prefix: '66', value: '64', label: 'Finanza' },
+            { prefix: '84', value: '84', label: 'PA' }
+        ];
+
         function autoSelectAteco(code) {
             if (!code) return false;
-            var map = [
-                { prefix: '35', value: '35' },
-                { prefix: '49', value: '49' }, { prefix: '50', value: '49' },
-                { prefix: '51', value: '49' }, { prefix: '52', value: '49' }, { prefix: '53', value: '49' },
-                { prefix: '86', value: '86' }, { prefix: '87', value: '86' }, { prefix: '88', value: '86' },
-                { prefix: '61', value: '61' },
-                { prefix: '62', value: '62' },
-                { prefix: '63', value: '63' },
-                { prefix: '64', value: '64' }, { prefix: '65', value: '64' }, { prefix: '66', value: '64' },
-                { prefix: '84', value: '84' }
-            ];
             var clean = code.replace(/\./g, '');
             var sel = document.getElementById('ateco');
-            if (sel.value) return true; // già compilato, considera ok
-            for (var i = 0; i < map.length; i++) {
-                if (clean.startsWith(map[i].prefix)) {
-                    sel.value = map[i].value;
+            if (sel.value) return { found: true, code: code, label: sel.options[sel.selectedIndex].text };
+            for (var i = 0; i < ATECO_MAP.length; i++) {
+                if (clean.startsWith(ATECO_MAP[i].prefix)) {
+                    sel.value = ATECO_MAP[i].value;
                     sel.style.borderColor = '#68d391';
                     setTimeout(function() { sel.style.borderColor = ''; }, 2000);
-                    return true;
+                    return { found: true, code: code, label: ATECO_MAP[i].label };
                 }
             }
-            sel.value = 'altro';
-            sel.style.borderColor = '#68d391';
-            setTimeout(function() { sel.style.borderColor = ''; }, 2000);
-            return true;
+            // Codice presente ma non mappato nelle categorie NIS2: non auto-selezionare
+            return { found: false, code: code, label: '' };
         }
 
         function autoSelectEmployees(count) {
@@ -669,20 +683,35 @@ def test_lookup():
     company_data = lookup_company(vat)
     if company_data and company_data.get('name') and company_data['name'] != 'Partita IVA non trovata':
         domain_hint = find_company_domain(company_data['name'])
-        ateco_raw = company_data.get('ateco', '') or ''
-        employees_raw = company_data.get('employees', '') or company_data.get('addetti', '') or ''
+
+        # ATECO: scarta valori non informativi
+        _INVALID_ATECO = {'', 'n/d', 'nd', 'n.d.', 'non disponibile', 'null', 'none', '-'}
+        ateco_raw = str(company_data.get('ateco', '') or '').strip()
+        if ateco_raw.lower() in _INVALID_ATECO:
+            ateco_raw = ''
+
+        # Dipendenti: normalizza a intero, scarta se non significativo
+        employees_raw = (
+            company_data.get('employees', '')
+            or company_data.get('addetti', '')
+            or company_data.get('numero_addetti', '')
+            or ''
+        )
         employees_count = None
-        try:
-            employees_count = int(''.join(filter(str.isdigit, str(employees_raw)))) if employees_raw else None
-        except (ValueError, TypeError):
-            pass
+        if str(employees_raw).strip().lower() not in _INVALID_ATECO:
+            try:
+                n = int(''.join(filter(str.isdigit, str(employees_raw))))
+                employees_count = n if n > 0 else None
+            except (ValueError, TypeError):
+                pass
+
         return jsonify({
             "success": True,
             "name": company_data['name'],
             "address": company_data.get('address', ''),
             "domain_hint": domain_hint,
-            "ateco": ateco_raw,
-            "employees_count": employees_count
+            "ateco": ateco_raw,          # stringa vuota = non disponibile
+            "employees_count": employees_count   # None = non disponibile
         })
     return jsonify({"success": False})
 
