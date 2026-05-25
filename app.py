@@ -5,17 +5,12 @@ from scoring import calculate_nis2_score
 import random
 import string
 import dns.resolver
-import smtplib
-import socket
 import os
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = 'nis2-web-version-2026'
 
 verification_codes = {}
-
-# Rileva se siamo su Render
-IS_RENDER = os.environ.get('RENDER', 'false') == 'true'
 
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
@@ -326,7 +321,6 @@ HTML_TEMPLATE = r"""
     <script>
         var dnsVerified = false;
         var otpVerified = false;
-        var scanData = null;
 
         function isValidItalianVat(vat) {
             if (vat.length !== 11) return false;
@@ -351,9 +345,19 @@ HTML_TEMPLATE = r"""
                                 preview.classList.remove('hidden');
                                 if (d.success) {
                                     preview.innerHTML = '<p style="color:#68d391;font-weight:700;">' + d.name + '</p><p style="color:#a0aec0;font-size:13px;">' + (d.address||'') + '</p>';
-                                    if (d.domain_hint && !document.getElementById('domain').value) {
-                                        document.getElementById('domain').value = d.domain_hint;
+                                    var domainField = document.getElementById('domain');
+                                    if (d.domain_hint && !domainField.value) {
+                                        domainField.value = '';
+                                        domainField.placeholder = 'Ricerca dominio in corso...';
+                                        domainField.disabled = true;
+                                        setTimeout(function() {
+                                            domainField.value = d.domain_hint;
+                                            domainField.placeholder = 'es. azienda.it';
+                                            domainField.disabled = false;
+                                        }, 300);
                                     }
+                                    if (d.ateco) autoSelectAteco(d.ateco);
+                                    if (d.employees_count) autoSelectEmployees(d.employees_count);
                                 } else {
                                     preview.innerHTML = '<p style="color:#f6e05e;">Partita IVA non trovata nei registri pubblici</p>';
                                 }
@@ -373,6 +377,50 @@ HTML_TEMPLATE = r"""
             document.getElementById("step2").classList.remove("hidden");
             document.getElementById("step2-indicator").classList.add("active");
             document.getElementById("step1-indicator").classList.add("completed");
+        }
+
+        function autoSelectAteco(code) {
+            if (!code) return;
+            // Mappa prefissi ATECO alle opzioni della <select>
+            var map = [
+                { prefix: '35', value: '35' },
+                { prefix: '49', value: '49' }, { prefix: '50', value: '49' },
+                { prefix: '51', value: '49' }, { prefix: '52', value: '49' }, { prefix: '53', value: '49' },
+                { prefix: '86', value: '86' }, { prefix: '87', value: '86' }, { prefix: '88', value: '86' },
+                { prefix: '61', value: '61' },
+                { prefix: '62', value: '62' },
+                { prefix: '63', value: '63' },
+                { prefix: '64', value: '64' }, { prefix: '65', value: '64' }, { prefix: '66', value: '64' },
+                { prefix: '84', value: '84' }
+            ];
+            var clean = code.replace('.', '');
+            var sel = document.getElementById('ateco');
+            if (sel.value) return; // non sovrascrivere se già compilato
+            for (var i = 0; i < map.length; i++) {
+                if (clean.startsWith(map[i].prefix)) {
+                    sel.value = map[i].value;
+                    sel.style.borderColor = '#68d391';
+                    setTimeout(function() { sel.style.borderColor = ''; }, 2000);
+                    return;
+                }
+            }
+            sel.value = 'altro';
+            sel.style.borderColor = '#68d391';
+            setTimeout(function() { sel.style.borderColor = ''; }, 2000);
+        }
+
+        function autoSelectEmployees(count) {
+            if (!count && count !== 0) return;
+            var n = parseInt(count);
+            if (isNaN(n)) return;
+            var sel = document.getElementById('employees');
+            if (sel.value) return; // non sovrascrivere se già compilato
+            if (n <= 10)       sel.value = '1-10';
+            else if (n <= 50)  sel.value = '11-50';
+            else if (n <= 250) sel.value = '51-250';
+            else               sel.value = '250+';
+            sel.style.borderColor = '#68d391';
+            setTimeout(function() { sel.style.borderColor = ''; }, 2000);
         }
 
         function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
@@ -524,6 +572,69 @@ HTML_TEMPLATE = r"""
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+def _clean_company_name(name):
+    """Restituisce una stringa pulita da usare come base per il dominio."""
+    import unicodedata
+    import re
+    # Normalizza accenti (es. "Società" -> "Societa")
+    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
+    name = name.lower()
+    # Rimuove suffissi legali comuni (ordine: dal più lungo al più corto)
+    suffixes = ['societa per azioni', 'societa a responsabilita limitata semplificata',
+                'societa a responsabilita limitata', 'societa in accomandita semplice',
+                'societa in nome collettivo', 'srls', 'srl', 'spa', 'snc', 'sas',
+                'sapa', 'scrl', 'scarl', 'onlus', 'aps', 'ets', 'asd', 'soc coop',
+                'cooperativa', 'coop', 'group', 'gruppo', 'holding', 'italia', 'italian']
+    for s in suffixes:
+        name = re.sub(r'\b' + re.escape(s) + r'\b', '', name)
+    # Rimuove caratteri non alfanumerici (tranne spazi e trattini)
+    name = re.sub(r'[^a-z0-9 \-]', '', name)
+    # Compatta spazi e trattini multipli
+    name = re.sub(r'[\s\-]+', '-', name).strip('-')
+    return name
+
+
+def _domain_resolves(domain):
+    """Verifica che il dominio risponda ad una query DNS A o CNAME."""
+    for record_type in ('A', 'CNAME'):
+        try:
+            dns.resolver.resolve(domain, record_type, lifetime=3)
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def find_company_domain(company_name):
+    """
+    Prova sistematicamente varianti del dominio aziendale e restituisce
+    il primo che risponde al DNS, oppure la variante .it come fallback.
+    """
+    base = _clean_company_name(company_name)
+    if not base:
+        return None
+
+    # Genera candidati: nome intero, poi senza trattini, poi prima parola
+    bases = [base]
+    no_dash = base.replace('-', '')
+    if no_dash != base:
+        bases.append(no_dash)
+    first_word = base.split('-')[0]
+    if first_word not in bases and len(first_word) > 2:
+        bases.append(first_word)
+
+    tlds = ['.it', '.com', '.eu', '.net', '.org']
+
+    for b in bases:
+        for tld in tlds:
+            candidate = b + tld
+            if _domain_resolves(candidate):
+                return candidate
+
+    # Nessun dominio verificato → restituisce il fallback più probabile
+    return bases[0] + '.it'
+
+
 @app.route('/api/test-lookup', methods=['POST'])
 def test_lookup():
     vat = request.json.get('vat_number', '')
@@ -531,8 +642,22 @@ def test_lookup():
         return jsonify({"success": False})
     company_data = lookup_company(vat)
     if company_data and company_data.get('name') and company_data['name'] != 'Partita IVA non trovata':
-        domain_hint = company_data.get('name', '').lower().replace(' ', '').replace('srl', '').replace('spa', '').replace('snc', '').replace('sas', '').replace('srls', '') + '.it'
-        return jsonify({"success": True, "name": company_data['name'], "address": company_data.get('address', ''), "domain_hint": domain_hint})
+        domain_hint = find_company_domain(company_data['name'])
+        ateco_raw = company_data.get('ateco', '') or ''
+        employees_raw = company_data.get('employees', '') or company_data.get('addetti', '') or ''
+        employees_count = None
+        try:
+            employees_count = int(''.join(filter(str.isdigit, str(employees_raw)))) if employees_raw else None
+        except (ValueError, TypeError):
+            pass
+        return jsonify({
+            "success": True,
+            "name": company_data['name'],
+            "address": company_data.get('address', ''),
+            "domain_hint": domain_hint,
+            "ateco": ateco_raw,
+            "employees_count": employees_count
+        })
     return jsonify({"success": False})
 
 @app.route('/api/verify-dns', methods=['POST'])

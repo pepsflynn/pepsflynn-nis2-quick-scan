@@ -38,7 +38,7 @@ def get_nis2_category(ateco_code, employees_str):
     return {"category": category, "description": description}
 
 
-def check_certification_equivalence(scan_results, company_data):
+def check_certification_equivalence(scan_results):
     cert_status = []
     ssl = scan_results.get("ssl", {})
     headers = scan_results.get("headers", {})
@@ -153,22 +153,21 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
     questionnaire_details = []
 
     question_map = {
-        "q1": {"label": "Registrazione al portale ACN", "art": "Art. 7 D.Lgs. 138/2024"},
-        "q2": {"label": "Designazione Punto di Contatto", "art": "Art. 7 D.Lgs. 138/2024"},
-        "q3": {"label": "CISO o referente sicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
-        "q4": {"label": "Analisi dei rischi documentata", "art": "Art. 21.2.a"},
-        "q5": {"label": "Gestione e notifica incidenti", "art": "Art. 21.2.b"},
-        "q6": {"label": "Politiche di sicurezza e accessi (MFA, backup, cifratura)", "art": "Art. 21.2.i, h"},
-        "q7": {"label": "Patch management e gestione vulnerabilità", "art": "Art. 21.2.e"},
-        "q8": {"label": "Verifica sicurezza fornitori", "art": "Art. 21.2.d"},
-        "q9": {"label": "Formazione cybersicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
-        "q10": {"label": "Certificazioni di sicurezza", "art": "ISO 27001 / Linee guida ACN"}
+        "q1": {"label": "Registrazione al portale ACN e Punto di Contatto", "art": "Art. 7 D.Lgs. 138/2024"},
+        "q2": {"label": "CISO o referente sicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
+        "q3": {"label": "Analisi dei rischi documentata", "art": "Art. 21.2.a"},
+        "q4": {"label": "Gestione e notifica incidenti", "art": "Art. 21.2.b"},
+        "q5": {"label": "Politiche di sicurezza e accessi (MFA, backup, cifratura)", "art": "Art. 21.2.i, h"},
+        "q6": {"label": "Patch management e gestione vulnerabilità", "art": "Art. 21.2.e"},
+        "q7": {"label": "Verifica sicurezza fornitori", "art": "Art. 21.2.d"},
+        "q8": {"label": "Formazione cybersicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
+        "q9": {"label": "Certificazioni di sicurezza", "art": "ISO 27001 / Linee guida ACN"}
     }
 
     if questions:
         for key, info in question_map.items():
             answer = questions.get(key, "no")
-            if answer in ["si", "si_interno", "si_esterno"]:
+            if answer in ["si", "si_interno", "si_esterno", "iso27001", "altra"]:
                 questionnaire_score += 3
                 questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "si"})
             elif answer in ["parziale", "saltuaria", "in_corso"]:
@@ -213,7 +212,7 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
     else:
         overall_risk, risk_color = "CRITICO", "error"
 
-    cert_status = check_certification_equivalence(scan_results, company_data)
+    cert_status = check_certification_equivalence(scan_results)
 
     return {
         "total_score": total_score,
