@@ -791,7 +791,7 @@ HTML_TEMPLATE = r"""
             h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>👤 Modulo CISO virtuale con KPI e roadmap</li>";
             h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>🖥️ Scan rete interna: porte, endpoint, BitLocker, firewall</li>";
             h += "</ul>";
-            h += "<a href='#' class='btn-download' onclick='alert("Contattaci per la versione portable."); return false;'>⬇️ RICHIEDI LA VERSIONE PORTABLE</a>";
+            h += "<a href='#' class='btn-download' onclick=\"alert('Contattaci per la versione portable.'); return false;\">⬇️ RICHIEDI LA VERSIONE PORTABLE</a>";
             h += "<p style='font-size:11px;color:#718096;margin-top:10px;text-align:center;'>Licenza a pagamento • Include 30 giorni di aggiornamenti e supporto</p>";
             h += "</div>";
             
