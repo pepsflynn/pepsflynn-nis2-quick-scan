@@ -655,7 +655,7 @@ HTML_TEMPLATE = r"""
             // raggruppa per prefisso area
             var webItems = [], emailItems = [], otherItems = [];
             var webKeys   = ["SSL", "Header", "CMS", "WAF", "HTTP", "File", "TLS", "Subdomain"];
-            var emailKeys = ["DMARC", "SPF", "DNSSEC"];
+            var emailKeys = ["MX", "DMARC", "SPF", "DKIM", "MTA", "DNSSEC"];
             for (var i = 0; i < s.details.length; i++) {
                 var dd = s.details[i];
                 var isWeb = webKeys.some(function(k){ return dd.area.toUpperCase().indexOf(k.toUpperCase()) >= 0; });

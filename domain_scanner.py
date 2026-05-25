@@ -24,6 +24,7 @@ def scan_domain(domain):
         "dnssec":         check_dnssec(domain),
         "cms":            detect_cms(domain),
         "waf":            detect_waf(domain),
+        "email_ext":      check_email_extended(domain),
         "redirect":       check_http_redirect(domain),
         "exposed_files":  check_exposed_files(domain),
         "tls_version":    check_tls_version(domain),
@@ -121,6 +122,56 @@ def check_spf(domain):
         return {"presente": False}
     except Exception:
         return {"presente": False}
+
+
+def check_email_extended(domain):
+    """
+    Verifica MX, DKIM (14 selettori comuni) e MTA-STS.
+    Complementa i check DMARC/SPF/DNSSEC già presenti.
+    """
+    result = {
+        "mx_valid": False, "mx_count": 0,
+        "dkim_verified": False, "dkim_selector": "",
+        "mta_sts": False,
+    }
+
+    # MX
+    try:
+        mx_answers = dns.resolver.resolve(domain, 'MX', lifetime=_DNS_LIFETIME)
+        result["mx_valid"] = True
+        result["mx_count"] = len(list(mx_answers))
+    except Exception:
+        pass
+
+    # DKIM — selettori più comuni
+    dkim_selectors = [
+        "default", "google", "mail", "smtp", "dkim",
+        "selector1", "selector2",  # Microsoft 365
+        "k1", "k2",                # Mailchimp/Mandrill
+        "s1", "s2",
+        "email",                   # SendGrid
+        "mx",                      # Zoho
+        "protonmail", "amazonses",
+    ]
+    for sel in dkim_selectors:
+        try:
+            dns.resolver.resolve(f"{sel}._domainkey.{domain}", 'TXT', lifetime=2)
+            result["dkim_verified"] = True
+            result["dkim_selector"] = sel
+            break
+        except Exception:
+            continue
+
+    # MTA-STS (RFC 8461)
+    try:
+        for rdata in dns.resolver.resolve(f"_mta-sts.{domain}", 'TXT', lifetime=_DNS_LIFETIME):
+            if "v=STSv1" in str(rdata):
+                result["mta_sts"] = True
+                break
+    except Exception:
+        pass
+
+    return result
 
 
 def check_dnssec(domain):

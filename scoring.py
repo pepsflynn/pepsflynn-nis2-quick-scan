@@ -93,8 +93,23 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
         score = int((present / total) * 15)
         technical_score += score
         details.append({"area": "Header Sicurezza (Art. 21.2.a)", "score": score, "max": 15, "note": f"{present}/{total} header presenti"})
-        if present < 4:
-            recommendations.append("Configurare gli header di sicurezza HTTP mancanti (Art. 21.2.a)")
+        missing = [h for h, v in headers.items() if v.get("status") == "assente"]
+        if missing:
+            short_names = {
+                "Strict-Transport-Security": "HSTS",
+                "Content-Security-Policy": "CSP",
+                "X-Frame-Options": "X-Frame-Options",
+                "X-Content-Type-Options": "X-Content-Type-Options",
+                "Referrer-Policy": "Referrer-Policy",
+                "Permissions-Policy": "Permissions-Policy",
+                "Cross-Origin-Opener-Policy": "COOP",
+                "Cross-Origin-Resource-Policy": "CORP",
+            }
+            missing_labels = [short_names.get(h, h) for h in missing[:5]]
+            recommendations.append(
+                f"Header HTTP mancanti ({len(missing)}): {', '.join(missing_labels)}"
+                f"{' e altri' if len(missing) > 5 else ''} (Art. 21.2.a)"
+            )
 
     cms = scan_results.get("cms", {})
     risks = cms.get("risks", [])
@@ -115,36 +130,80 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
         details.append({"area": "WAF (Art. 21.2.a)", "score": 0, "max": 5, "note": "Nessun WAF rilevato"})
 
     # ============================================================
-    # EMAIL (max 15 punti)
+    # EMAIL / DNS (max 26 punti)
     # ============================================================
+
+    # MX — record di posta (max 3)
+    email_ext = scan_results.get("email_ext", {})
+    if email_ext.get("mx_valid"):
+        technical_score += 3
+        details.append({"area": "MX — server di posta (Art. 21.2.a)", "score": 3, "max": 3,
+                         "note": f"{email_ext.get('mx_count', '?')} record MX trovati"})
+    else:
+        details.append({"area": "MX — server di posta (Art. 21.2.a)", "score": 0, "max": 3,
+                         "note": "Nessun record MX trovato"})
+        recommendations.append("Verificare la configurazione dei record MX per la posta (Art. 21.2.a)")
+
+    # DMARC (max 8)
     dmarc = scan_results.get("dmarc", {})
     if dmarc.get("presente"):
         policy = dmarc.get("policy", "none")
         if policy == "reject":
             technical_score += 8
-            details.append({"area": "DMARC (Art. 21.2.a)", "score": 8, "max": 8, "note": "Policy reject"})
+            details.append({"area": "DMARC (Art. 21.2.a)", "score": 8, "max": 8, "note": "Policy reject ✓"})
         elif policy == "quarantine":
             technical_score += 5
-            details.append({"area": "DMARC (Art. 21.2.a)", "score": 5, "max": 8, "note": "Policy quarantine"})
+            details.append({"area": "DMARC (Art. 21.2.a)", "score": 5, "max": 8, "note": "Policy quarantine (consigliato: reject)"})
+            recommendations.append("Portare DMARC da quarantine a reject per massima protezione (Art. 21.2.a)")
         else:
-            technical_score += 3
-            details.append({"area": "DMARC (Art. 21.2.a)", "score": 3, "max": 8, "note": "Policy none (debole)"})
+            technical_score += 2
+            details.append({"area": "DMARC (Art. 21.2.a)", "score": 2, "max": 8, "note": "Policy none — nessuna protezione attiva"})
+            recommendations.append("Configurare DMARC con policy quarantine o reject (attuale: none) (Art. 21.2.a)")
     else:
-        details.append({"area": "DMARC (Art. 21.2.a)", "score": 0, "max": 8, "note": "Assente"})
+        details.append({"area": "DMARC (Art. 21.2.a)", "score": 0, "max": 8, "note": "Assente — dominio vulnerabile allo spoofing"})
+        recommendations.append("Aggiungere record DMARC per proteggere il dominio da spoofing email (Art. 21.2.a)")
 
+    # SPF (max 4)
     spf = scan_results.get("spf", {})
     if spf.get("presente"):
-        technical_score += 4
-        details.append({"area": "SPF (Art. 21.2.a)", "score": 4, "max": 4, "note": "Configurato"})
+        if not spf.get("softfail", True):   # -all = strict
+            technical_score += 4
+            details.append({"area": "SPF (Art. 21.2.a)", "score": 4, "max": 4, "note": "Configurato (strict: -all)"})
+        else:
+            technical_score += 2
+            details.append({"area": "SPF (Art. 21.2.a)", "score": 2, "max": 4, "note": "Presente ma permissivo (~all)"})
+            recommendations.append("Modificare SPF da ~all (softfail) a -all (hardfail) per protezione completa (Art. 21.2.a)")
     else:
         details.append({"area": "SPF (Art. 21.2.a)", "score": 0, "max": 4, "note": "Assente"})
+        recommendations.append("Aggiungere record SPF per autorizzare i server di posta legittimi (Art. 21.2.a)")
 
+    # DKIM (max 5)
+    if email_ext.get("dkim_verified"):
+        technical_score += 5
+        details.append({"area": "DKIM (Art. 21.2.a)", "score": 5, "max": 5,
+                         "note": f"Selettore trovato: {email_ext.get('dkim_selector', '?')}"})
+    else:
+        details.append({"area": "DKIM (Art. 21.2.a)", "score": 0, "max": 5,
+                         "note": "Non rilevato (14 selettori comuni verificati)"})
+        recommendations.append("Configurare DKIM per firmare digitalmente le email in uscita (Art. 21.2.a)")
+
+    # MTA-STS (max 3)
+    if email_ext.get("mta_sts"):
+        technical_score += 3
+        details.append({"area": "MTA-STS (Art. 21.2.h)", "score": 3, "max": 3, "note": "Abilitato — SMTP cifrato forzato"})
+    else:
+        details.append({"area": "MTA-STS (Art. 21.2.h)", "score": 0, "max": 3,
+                         "note": "Non configurato — SMTP in ingresso non protetto"})
+        recommendations.append("Configurare MTA-STS per forzare la cifratura SMTP in ingresso (Art. 21.2.h)")
+
+    # DNSSEC (max 3)
     dnssec = scan_results.get("dnssec", {})
     if dnssec.get("enabled"):
         technical_score += 3
         details.append({"area": "DNSSEC (Art. 21.2.a)", "score": 3, "max": 3, "note": "Abilitato"})
     else:
         details.append({"area": "DNSSEC (Art. 21.2.a)", "score": 0, "max": 3, "note": "Non abilitato"})
+        recommendations.append("Abilitare DNSSEC per proteggere i record DNS da avvelenamento (Art. 21.2.a)")
 
     # ============================================================
     # NUOVI CHECK (max 15 punti)
