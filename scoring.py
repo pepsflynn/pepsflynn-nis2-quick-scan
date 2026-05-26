@@ -214,28 +214,6 @@ def get_nis2_category(ateco_code, employees_str, revenue_str=''):
                 "annex": None}
 
 
-def check_certification_equivalence(scan_results):
-    cert_status = []
-    ssl = scan_results.get("ssl", {})
-    headers = scan_results.get("headers", {})
-    dmarc = scan_results.get("dmarc", {})
-    spf = scan_results.get("spf", {})
-    dnssec = scan_results.get("dnssec", {})
-    headers_ok = sum(1 for h in headers.values() if h.get("status") == "presente")
-    iso_score = 0
-    if ssl.get("valid"): iso_score += 20
-    if headers_ok >= 5: iso_score += 30
-    if dmarc.get("policy") in ["reject", "quarantine"]: iso_score += 25
-    if spf.get("presente"): iso_score += 15
-    if dnssec.get("enabled"): iso_score += 10
-    if iso_score >= 80:
-        cert_status.append({"certification": "ISO 27001", "readiness": "Alta", "note": "Configurazione coerente con requisiti ISO 27001"})
-    elif iso_score >= 50:
-        cert_status.append({"certification": "ISO 27001", "readiness": "Media", "note": "Buone basi ma servono miglioramenti"})
-    else:
-        cert_status.append({"certification": "ISO 27001", "readiness": "Bassa", "note": "Lontano dai requisiti minimi"})
-    return cert_status
-
 
 def calculate_nis2_score(company_data, scan_results, questions=None):
     technical_score = 0
@@ -512,11 +490,24 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
     else:
         overall_risk, risk_color = "CRITICO", "error"
 
-    cert_status = check_certification_equivalence(scan_results)
 
     # Ordina gaps per priorità: CRITICO > ALTO > MEDIO > BASSO
     _order = {"CRITICO": 0, "ALTO": 1, "MEDIO": 2, "BASSO": 3}
     questionnaire_gaps.sort(key=lambda g: _order.get(g["weight"], 4))
+
+    # NIS2 Readiness breakdown (sostituisce ISO 27001 simulato)
+    tech_max   = sum(d.get("max", 0) for d in details)
+    quest_max  = len(question_map) * 3
+    nis2_readiness = {
+        "tech_score":   round(technical_score, 1),
+        "tech_max":     tech_max,
+        "quest_score":  round(questionnaire_score, 1),
+        "quest_max":    quest_max,
+        "ciso_score":   ciso_score,
+        "email_score":  email_score,
+        "critical_gaps": [g["label"] for g in questionnaire_gaps if g["weight"] == "CRITICO"],
+        "high_gaps":     [g["label"] for g in questionnaire_gaps if g["weight"] == "ALTO"],
+    }
 
     return {
         "total_score": total_score,
@@ -527,5 +518,5 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
         "questionnaire_details": questionnaire_details,
         "questionnaire_gaps": questionnaire_gaps,
         "recommendations": recommendations,
-        "certifications": cert_status
+        "nis2_readiness": nis2_readiness,
     }

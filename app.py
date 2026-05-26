@@ -378,54 +378,42 @@ HTML_TEMPLATE = r"""
             }
         }
 
-        var ATECO_MAP = [
-            { prefix: '35', value: '35', label: 'Energia' },
-            { prefix: '49', value: '49', label: 'Trasporti' },
-            { prefix: '50', value: '49', label: 'Trasporti' },
-            { prefix: '51', value: '49', label: 'Trasporti' },
-            { prefix: '52', value: '49', label: 'Trasporti' },
-            { prefix: '53', value: '49', label: 'Trasporti' },
-            { prefix: '86', value: '86', label: 'Sanità' },
-            { prefix: '87', value: '86', label: 'Sanità' },
-            { prefix: '88', value: '86', label: 'Sanità' },
-            { prefix: '61', value: '61', label: 'ICT - TLC' },
-            { prefix: '62', value: '62', label: 'ICT - Servizi' },
-            { prefix: '63', value: '63', label: 'ICT - DC' },
-            { prefix: '64', value: '64', label: 'Finanza' },
-            { prefix: '65', value: '64', label: 'Finanza' },
-            { prefix: '66', value: '64', label: 'Finanza' },
-            { prefix: '84', value: '84', label: 'PA' }
-        ];
-
+        // autoSelectAteco: fills select from lookup result, then recomputes NIS2 category
         function autoSelectAteco(code) {
             if (!code) return false;
-            var clean = code.replace(/\./g, '');
+            var clean = code.replace(/\./g,'');
             var sel = document.getElementById('ateco');
             if (sel.value) return { found: true, code: code, label: sel.options[sel.selectedIndex].text };
-            for (var i = 0; i < ATECO_MAP.length; i++) {
-                if (clean.startsWith(ATECO_MAP[i].prefix)) {
-                    sel.value = ATECO_MAP[i].value;
-                    sel.style.borderColor = '#68d391';
-                    setTimeout(function() { sel.style.borderColor = ''; }, 2000);
-                    return { found: true, code: code, label: ATECO_MAP[i].label };
+            // Find best matching option in the new grouped select
+            var best = null;
+            for (var i = 0; i < sel.options.length; i++) {
+                var optVal = sel.options[i].value.replace(/\./g,'');
+                if (optVal && clean.startsWith(optVal)) {
+                    if (!best || optVal.length > best.len) best = { idx: i, len: optVal.length, label: sel.options[i].text };
                 }
             }
-            // Codice presente ma non mappato nelle categorie NIS2: non auto-selezionare
+            if (best) {
+                sel.selectedIndex = best.idx;
+                sel.style.borderColor = '#68d391';
+                setTimeout(function(){ sel.style.borderColor = ''; }, 2000);
+                computeNIS2Category();
+                return { found: true, code: code, label: best.label };
+            }
             return { found: false, code: code, label: '' };
         }
-
         function autoSelectEmployees(count) {
             if (count === null || count === undefined) return false;
             var n = parseInt(count);
             if (isNaN(n)) return false;
             var sel = document.getElementById('employees');
-            if (sel.value) return true; // già compilato, considera ok
+            if (sel.value) return true;
             if (n <= 10)       sel.value = '1-10';
             else if (n <= 50)  sel.value = '11-50';
             else if (n <= 250) sel.value = '51-250';
             else               sel.value = '250+';
             sel.style.borderColor = '#68d391';
             setTimeout(function() { sel.style.borderColor = ''; }, 2000);
+            computeNIS2Category();
             return true;
         }
 
@@ -578,6 +566,7 @@ HTML_TEMPLATE = r"""
             return result;
         }
 
+        function showPortableContact() { alert('Contatta il team Ichnobyte per la versione portable.'); }
         function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
 
         function checkEmailDomain() {
@@ -850,75 +839,127 @@ HTML_TEMPLATE = r"""
                 h += "</div>";
             }
 
-            // ---- CERTIFICAZIONI ----
-            if (s.certifications && s.certifications.length > 0) {
-                h += "<div class='card'><h3>Equivalenza Certificazioni</h3><table><tr><th>Certificazione</th><th>Readiness</th><th>Note</th></tr>";
-                for (var c2 = 0; c2 < s.certifications.length; c2++) {
-                    var cert = s.certifications[c2];
-                    var cc = cert.readiness === "Alta" ? "ok" : cert.readiness === "Media" ? "warning" : "error";
-                    h += "<tr><td>" + cert.certification + "</td><td class='" + cc + "'>" + cert.readiness + "</td><td style='font-size:12px;'>" + cert.note + "</td></tr>";
+            // ---- NIS2 READINESS SUMMARY ----
+            if (s.nis2_readiness) {
+                var nr = s.nis2_readiness;
+                var cat = s.nis2_category ? s.nis2_category.category : "Fuori ambito";
+                var catColor = cat === "Essenziale" ? "#fc8181" : cat === "Importante" ? "#f6e05e" : "#63b3ed";
+
+                h += "<div class='card'><h3>📊 NIS2 Readiness — Dettaglio punteggio</h3>";
+                h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:14px;'>Categoria: <strong style='color:" + catColor + ";'>" + cat + "</strong></p>";
+
+                function readBar(score, max, label, color) {
+                    var pct = max > 0 ? Math.round(score/max*100) : 0;
+                    return "<div style='margin-bottom:12px;'>" +
+                        "<div style='display:flex;justify-content:space-between;font-size:12px;color:#a0aec0;margin-bottom:4px;'>" +
+                        "<span>" + label + "</span><span style='color:#e2e8f0;font-weight:500;'>" + score + " / " + max + " pt (" + pct + "%)</span></div>" +
+                        "<div style='height:8px;background:rgba(255,255,255,0.08);border-radius:4px;'>" +
+                        "<div style='width:" + pct + "%;height:100%;border-radius:4px;background:" + color + ";transition:width .6s;'></div></div></div>";
                 }
-                h += "</table></div>";
+
+                h += readBar(nr.tech_score,  nr.tech_max,   "Controlli tecnici automatici", "#63b3ed");
+                h += readBar(nr.quest_score, nr.quest_max,  "Governance e processi (questionario)", "#68d391");
+                h += readBar(nr.ciso_score,  5,             "Responsabile sicurezza (CISO)", "#f6ad55");
+                h += readBar(nr.email_score, 10,            "Verifica identità email/OTP", "#9f7aea");
+
+                if (nr.critical_gaps && nr.critical_gaps.length > 0) {
+                    h += "<div style='margin-top:12px;padding:10px 12px;background:rgba(252,129,129,0.08);border:1px solid rgba(252,129,129,0.3);border-radius:6px;'>";
+                    h += "<p style='font-size:12px;font-weight:600;color:#fc8181;margin:0 0 6px;'>⚠️ Lacune critiche rilevate (" + nr.critical_gaps.length + "):</p>";
+                    nr.critical_gaps.forEach(function(g){ h += "<p style='font-size:12px;color:#a0aec0;margin:2px 0;'>→ " + g + "</p>"; });
+                    h += "</div>";
+                }
+                h += "</div>";
             }
 
-            // ---- ALERT DINAMICO CTA ----
+            // ---- CTA VERSIONE PORTABLE — moduli specifici per gap ----
+            var PORTABLE_MODULES = {
+                "q1":  { icon:"📋", name:"Registrazione & Compliance ACN",   urgency:"LEGALE",
+                         desc:"Checklist obblighi ACN, scadenzario registrazione, gestione documentale conforme D.Lgs. 138/2024" },
+                "q2":  { icon:"👤", name:"CISO Virtuale",                     urgency:"GOVERNANCE",
+                         desc:"Roadmap sicurezza, KPI, reportistica automatica per il CdA, mandato e responsabilità formalizzate" },
+                "q3":  { icon:"🔍", name:"Analisi dei Rischi",                urgency:"LEGALE",
+                         desc:"Metodologia ENISA guidata, asset inventory, valutazione minacce/impatto, report PDF NIS2-compliant" },
+                "q4":  { icon:"🚨", name:"Incident Management",              urgency:"LEGALE",
+                         desc:"Workflow notifica ACN 24h/72h, template pre-compilati, registro incidenti, escalation automatica" },
+                "q5":  { icon:"🔄", name:"Business Continuity",              urgency:"OPERATIVO",
+                         desc:"Template BCP, scenari di crisi, pianificazione e log esercitazioni, RTO/RPO documentati" },
+                "q6":  { icon:"🔐", name:"Access Control & Crittografia",    urgency:"TECNICO",
+                         desc:"Verifica MFA deployment, policy password, cifratura endpoint e dati a riposo, audit accessi privilegiati" },
+                "q7":  { icon:"🛡️", name:"Patch & Vulnerability Management", urgency:"TECNICO",
+                         desc:"Inventario asset software, SLA patch per criticità, registro CVE, remediation tracking" },
+                "q8":  { icon:"🔗", name:"Gestione Fornitori & Supply Chain", urgency:"LEGALE",
+                         desc:"Questionario sicurezza fornitori, scoring supply chain, contratti con clausole NIS2, registro terze parti critiche" },
+                "q9":  { icon:"🎓", name:"Formazione & Awareness",           urgency:"OPERATIVO",
+                         desc:"Moduli e-learning NIS2, simulazioni phishing, test conoscenza, tracciamento e attestati di completamento" },
+                "q10": { icon:"📄", name:"Audit & Penetration Test",         urgency:"CONFORMITÀ",
+                         desc:"Gap analysis NIS2/ISO 27001, roadmap certificazione, gestione report pen-test, remediation plan" },
+            };
+
+            var urgencyColor = { "LEGALE":"#fc8181", "GOVERNANCE":"#f6ad55", "TECNICO":"#63b3ed", "OPERATIVO":"#68d391", "CONFORMITÀ":"#9f7aea" };
+
             var gaps = s.questionnaire_gaps || [];
+            var cat  = s.nis2_category ? s.nis2_category.category : "Fuori ambito";
             var critCount = gaps.filter(function(g){ return g.weight === "CRITICO"; }).length;
-            var cat = s.nis2_category ? s.nis2_category.category : "Altro";
-            var employees = d.company.employees || "";
+            var altoCount = gaps.filter(function(g){ return g.weight === "ALTO"; }).length;
 
-            var alertBg, alertBorder, alertIcon, alertTitle, alertMsg;
+            // Collect modules needed for actual gaps
+            var neededModules = [];
+            var seenKeys = {};
+            gaps.forEach(function(g) {
+                if (!PORTABLE_MODULES[g.key] || seenKeys[g.key]) return;
+                seenKeys[g.key] = true;
+                neededModules.push({ mod: PORTABLE_MODULES[g.key], gap: g });
+            });
+
+            // Alert level
+            var alertBg, alertBorder, alertIcon, alertTitle, alertIntro;
             if (critCount >= 2 && cat === "Essenziale") {
-                alertBg = "rgba(252,129,129,0.1)"; alertBorder = "rgba(252,129,129,0.5)";
-                alertIcon = "🚨"; alertTitle = "ATTENZIONE — Organizzazione Essenziale con lacune critiche";
-                alertMsg = "La tua organizzazione rientra nelle <strong>entità essenziali NIS2</strong> e presenta <strong>" + critCount + " lacune critiche</strong>. In caso di incidente o audit, le sanzioni possono raggiungere il <strong>2% del fatturato globale o 10 milioni di euro</strong>. È necessario un piano di adeguamento immediato.";
-            } else if (critCount >= 1 || cat === "Essenziale") {
-                alertBg = "rgba(246,173,85,0.1)"; alertBorder = "rgba(246,173,85,0.5)";
-                alertIcon = "⚠️"; alertTitle = "Intervento prioritario richiesto";
-                alertMsg = "Sono presenti lacune di governance che devono essere colmate prima della scadenza NIS2. La versione portable include strumenti specifici per i processi mancanti.";
+                alertBg="rgba(252,129,129,0.1)"; alertBorder="rgba(252,129,129,0.55)";
+                alertIcon="🚨"; alertTitle="Esposizione legale immediata — " + critCount + " obblighi NIS2 non rispettati";
+                alertIntro="Come soggetto <strong>Essenziale</strong>, la tua organizzazione è già soggetta agli obblighi del D.Lgs. 138/2024. I gap critici rilevati espongono a <strong>sanzioni fino a 10 milioni di € o il 2% del fatturato globale</strong> e a responsabilità penale degli organi direttivi in caso di incidente.";
+            } else if (critCount >= 1 || (cat === "Essenziale" && altoCount >= 2)) {
+                alertBg="rgba(246,173,85,0.1)"; alertBorder="rgba(246,173,85,0.5)";
+                alertIcon="⚠️"; alertTitle="Intervento prioritario richiesto";
+                alertIntro="Sono presenti <strong>" + (critCount + altoCount) + " lacune di governance</strong> che devono essere colmate prima del prossimo audit o incidente. I moduli seguenti risolvono esattamente i gap rilevati.";
+            } else if (cat === "Fuori ambito") {
+                alertBg="rgba(99,179,237,0.08)"; alertBorder="rgba(99,179,237,0.3)";
+                alertIcon="💡"; alertTitle="NIS2 non obbligatorio — ma i rischi cyber sono reali";
+                alertIntro="La tua organizzazione non rientra nell'ambito NIS2. Tuttavia un attacco ransomware o una violazione di dati può colpire qualsiasi azienda. I moduli seguenti rafforzano la postura di sicurezza come misura preventiva.";
             } else {
-                alertBg = "rgba(99,179,237,0.08)"; alertBorder = "rgba(99,179,237,0.3)";
-                alertIcon = "🔍"; alertTitle = "Analisi completa consigliata";
-                alertMsg = "Il Quick Scan copre la superficie pubblica. Per una valutazione NIS2 completa — inclusa rete interna, endpoint e processi — utilizza la versione portable.";
+                alertBg="rgba(99,179,237,0.08)"; alertBorder="rgba(99,179,237,0.3)";
+                alertIcon="🔍"; alertTitle="Completare la conformità NIS2";
+                alertIntro="Il Quick Scan copre la superficie pubblica. I gap di processo e governance rilevati richiedono strumenti dedicati per essere risolti strutturalmente.";
             }
 
-            var critLabels = gaps.filter(function(g){ return g.weight === "CRITICO"; }).map(function(g){ return g.label; });
-            var gapListHtml = critLabels.length
-                ? "<ul style='padding-left:18px;margin:10px 0;'>" + critLabels.map(function(l){ return "<li style='font-size:13px;color:#e2e8f0;margin-bottom:4px;'>❌ " + l + "</li>"; }).join("") + "</ul>"
-                : "";
+            if (neededModules.length > 0) {
+                h += "<div style='background:" + alertBg + ";border:2px solid " + alertBorder + ";border-radius:12px;padding:22px;margin-top:20px;'>";
+                h += "<h3 style='color:#e2e8f0;margin-top:0;font-size:17px;'>" + alertIcon + " " + alertTitle + "</h3>";
+                h += "<p style='font-size:13px;color:#cbd5e0;margin-bottom:16px;line-height:1.6;'>" + alertIntro + "</p>";
 
-            h += "<div style='background:" + alertBg + ";border:2px solid " + alertBorder + ";border-radius:12px;padding:24px;margin-top:20px;'>";
-            h += "<h3 style='color:#e2e8f0;margin-top:0;font-size:18px;'>" + alertIcon + " " + alertTitle + "</h3>";
-            h += "<p style='font-size:14px;color:#cbd5e0;margin-bottom:10px;'>" + alertMsg + "</p>";
-            h += gapListHtml;
-            h += "<p style='font-size:13px;color:#68d391;font-weight:600;margin:14px 0 6px;'>La versione portable include, oltre agli 11 controlli automatici:</p>";
-            h += "<ul style='padding-left:18px;margin:0 0 18px;'>";
-            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>📋 Analisi dei rischi guidata con reportistica PDF NIS2</li>";
-            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>🔔 Workflow notifica incidenti ad ACN (24h/72h)</li>";
-            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>🔗 Questionario e scoring sicurezza fornitori</li>";
-            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>👤 Modulo CISO virtuale con KPI e roadmap</li>";
-            h += "<li style='font-size:13px;color:#cbd5e0;margin-bottom:4px;'>🖥️ Scan rete interna: porte, endpoint, BitLocker, firewall</li>";
-            h += "</ul>";
-            h += "<a href='#' class='btn-download' onclick=\"alert('Contattaci per la versione portable.'); return false;\">⬇️ RICHIEDI LA VERSIONE PORTABLE</a>";
-            h += "<p style='font-size:11px;color:#718096;margin-top:10px;text-align:center;'>Licenza a pagamento • Include 30 giorni di aggiornamenti e supporto</p>";
-            h += "</div>";
-            
-            // BOX DOWNLOAD PORTABLE
-            h += "<div class='download-box'>";
-            h += "<h3>🔍 Vuoi un'analisi completa della rete interna?</h3>";
-            h += "<p>La versione cloud analizza solo la superficie pubblica. Con la <strong>versione portable</strong> puoi eseguire:</p>";
-            h += "<ul class='features-list'>";
-            h += "<li><span>🔐</span> Scan porte interne (RDP, SMB, FTP, Telnet)</li>";
-            h += "<li><span>🛡️</span> Verifica firewall e antivirus aziendali</li>";
-            h += "<li><span>💻</span> Controllo BitLocker e crittografia endpoint</li>";
-            h += "<li><span>📡</span> Rilevamento automatico dominio e rete locale</li>";
-            h += "<li><span>📊</span> Report NIS2 completo con punteggio esteso</li>";
-            h += "</ul>";
-            h += "<p style='color:#68d391; font-weight:600; margin:15px 0;'>Scarica la versione portable ed esegui lo scan completo dalla tua rete aziendale.</p>";
-            h += "<a href='#' class='btn-download' onclick='alert(\"Versione portable in arrivo. Contattaci per maggiori informazioni.\"); return false;'>⬇️ SCARICA VERSIONE PORTABLE</a>";
-            h += "<p style='font-size:11px;color:#718096;margin-top:10px;'>Licenza a pagamento • Include 30 giorni di aggiornamenti</p>";
-            h += "</div>";
-            
+                h += "<p style='font-size:12px;font-weight:700;color:#a0aec0;text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px;'>Moduli disponibili nella versione portable:</p>";
+
+                neededModules.forEach(function(item) {
+                    var m = item.mod; var g = item.gap;
+                    var uc = urgencyColor[m.urgency] || "#a0aec0";
+                    var gapLabel = g.weight === "CRITICO" ? "🔴 CRITICO" : g.weight === "ALTO" ? "🟠 ALTO" : "🟡 MEDIO";
+                    h += "<div style='background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;'>";
+                    h += "<span style='font-size:22px;line-height:1;'>" + m.icon + "</span>";
+                    h += "<div style='flex:1;'>";
+                    h += "<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>";
+                    h += "<strong style='font-size:13px;color:#e2e8f0;'>" + m.name + "</strong>";
+                    h += "<span style='font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:" + uc + ";color:#0a1628;'>" + m.urgency + "</span>";
+                    h += "<span style='font-size:10px;color:#718096;margin-left:auto;'>" + gapLabel + "</span></div>";
+                    h += "<p style='font-size:12px;color:#a0aec0;margin:0;line-height:1.5;'>" + m.desc + "</p>";
+                    h += "<p style='font-size:11px;color:#718096;margin:4px 0 0;font-style:italic;'>Colma la lacuna: " + g.label + "</p>";
+                    h += "</div></div>";
+                });
+
+                h += "<div style='margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;flex-wrap:gap;'>";
+                h += "<div><p style='font-size:12px;color:#68d391;font-weight:600;margin:0;'>✅ Versione portable include anche:</p>";
+                h += "<p style='font-size:11px;color:#718096;margin:3px 0 0;'>Scan rete interna • endpoint • BitLocker • porte • firewall • antivirus</p></div>";
+                h += "<a href=\'#\' onclick=\'showPortableContact()\' style=\'display:inline-block;padding:10px 20px;background:#185FA5;color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;\'>⬇️ Richiedi la versione portable</a>";
+                h += "</div></div>";
+            }
             document.getElementById("results").innerHTML = h;
             document.getElementById("results").scrollIntoView({ behavior: "smooth" });
         }
