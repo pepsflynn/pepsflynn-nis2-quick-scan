@@ -1,119 +1,217 @@
-# Mappatura settori NIS2 basata su codici ATECO
-NIS2_SECTORS = {
-    "energia": {"ateco_prefix": ["05", "06", "07", "08", "09", "19", "35"], "category": "Essenziale", "description": "Energia (elettrica, gas, petrolio)"},
-    "trasporti": {"ateco_prefix": ["49", "50", "51", "52", "53"], "category": "Essenziale", "description": "Trasporti (aereo, ferroviario, marittimo, stradale)"},
-    "sanita": {"ateco_prefix": ["86", "87", "88"], "category": "Essenziale", "description": "Sanità e assistenza"},
-    "acqua": {"ateco_prefix": ["36", "37", "38", "39"], "category": "Essenziale", "description": "Acqua potabile e acque reflue"},
-    "digitale": {"ateco_prefix": ["61", "62", "63", "58", "59", "60"], "category": "Importante", "description": "Infrastrutture digitali e servizi ICT"},
-    "finanza": {"ateco_prefix": ["64", "65", "66"], "category": "Importante", "description": "Servizi finanziari e bancari"},
-    "pubblica": {"ateco_prefix": ["84"], "category": "Essenziale", "description": "Pubblica Amministrazione"},
-    "manifatturiero": {"ateco_prefix": ["10", "11", "13", "14", "20", "21", "24", "25", "26", "27", "28", "29", "30"], "category": "Importante", "description": "Manifatturiero critico"},
-    "chimico": {"ateco_prefix": ["20", "21", "22"], "category": "Essenziale", "description": "Sostanze chimiche"},
-    "postale": {"ateco_prefix": ["53.2", "53.20"], "category": "Essenziale", "description": "Servizi postali e corrieri"}
+# ─────────────────────────────────────────────────────────────────
+# NIS2 — Allegato I (Settori Essenziali)  D.Lgs. 138/2024
+# ─────────────────────────────────────────────────────────────────
+ANNEX_I_PREFIXES = [
+    '05','06','07','08','09','19',   # Estrazione/raffinazione energia
+    '35',                             # Energia elettrica, gas, vapore
+    '36',                             # Acqua potabile
+    '37',                             # Acque reflue
+    '49','50','51','52',              # Trasporti (terra/mare/aria/logistica)
+    '61','62','63',                   # TLC / ICT / Data center
+    '64','65','66',                   # Servizi finanziari e bancari
+    '84',                             # Pubblica Amministrazione
+    '86','87','88',                   # Sanità e assistenza
+]
+
+# ─────────────────────────────────────────────────────────────────
+# NIS2 — Allegato II (Settori Importanti)
+# ─────────────────────────────────────────────────────────────────
+ANNEX_II_PREFIXES = [
+    '10','11',                        # Alimentare e bevande
+    '13','14',                        # Tessile/abbigliamento
+    '20','21','22',                   # Chimico, farmaceutico, plastica
+    '24','25','26','27','28','29','30',# Manifatturiero critico
+    '38','39',                        # Gestione rifiuti
+    '53',                             # Postale e corrieri
+    '58','59','60',                   # Media e editoria digitale
+    '72','73',                        # Ricerca scientifica e tecnica
+]
+
+# ─────────────────────────────────────────────────────────────────
+# Domande differenziate per categoria NIS2
+# ─────────────────────────────────────────────────────────────────
+QUESTION_MAP_BY_CATEGORY = {
+    "Essenziale": {
+        "q1":  {"label": "Registrazione ACN + Punto di Contatto formale designato",
+                "art": "Art. 7 D.Lgs. 138/2024",
+                "weight": "CRITICO",
+                "consequence": "Obbligo legale — sanzioni fino a 10M€ o 2% fatturato",
+                "portable": "Checklist obblighi ACN, scadenzario registrazione, gestione documentale"},
+        "q2":  {"label": "CISO designato formalmente con mandato scritto e budget dedicato",
+                "art": "Art. 20 D.Lgs. 138/2024",
+                "weight": "CRITICO",
+                "consequence": "Responsabilità penale per gli organi direttivi in caso di incidente",
+                "portable": "Modulo CISO virtuale: roadmap, KPI sicurezza, reportistica CdA"},
+        "q3":  {"label": "Analisi dei rischi documentata, aggiornata almeno annualmente",
+                "art": "Art. 21.2.a",
+                "weight": "CRITICO",
+                "consequence": "Impossibile dimostrare conformità in audit — sanzione certa",
+                "portable": "Analisi rischi guidata (asset, minacce, impatto) con report PDF NIS2"},
+        "q4":  {"label": "Piano notifica incidenti ad ACN entro 24h (primo report) e 72h (dettaglio)",
+                "art": "Art. 24 D.Lgs. 138/2024",
+                "weight": "CRITICO",
+                "consequence": "Mancata notifica = sanzione automatica, obbligo non derogabile",
+                "portable": "Workflow notifica incidenti, template per ACN, log eventi sicurezza"},
+        "q5":  {"label": "Business Continuity Plan (BCP) formale e testato con esercitazioni",
+                "art": "Art. 21.2.c",
+                "weight": "ALTO",
+                "consequence": "Interruzione prolungata servizi critici senza piano di ripristino",
+                "portable": "Template BCP, scenari di crisi, registro test e risultati"},
+        "q6":  {"label": "MFA obbligatorio, cifratura endpoint, password policy formale documentata",
+                "art": "Art. 21.2.h, i",
+                "weight": "ALTO",
+                "consequence": "Accesso non autorizzato a sistemi critici con privilegi elevati",
+                "portable": "Verifica MFA, policy password, cifratura endpoint e stato backup"},
+        "q7":  {"label": "Patch management strutturato con SLA definiti e registro vulnerabilità",
+                "art": "Art. 21.2.e",
+                "weight": "ALTO",
+                "consequence": "Sistemi non patchati = vettore primario attacchi ransomware",
+                "portable": "Inventario asset, stato patch OS/software, scansione vulnerabilità"},
+        "q8":  {"label": "Audit sicurezza fornitori critici + contratti con clausole security e SLA",
+                "art": "Art. 21.2.d",
+                "weight": "ALTO",
+                "consequence": "Il 62% degli attacchi NIS2 parte dalla supply chain",
+                "portable": "Questionario fornitori, scoring supply chain, registro contratti"},
+        "q9":  {"label": "Formazione cybersicurezza obbligatoria, documentata e verificata",
+                "art": "Art. 20 D.Lgs. 138/2024",
+                "weight": "MEDIO",
+                "consequence": "Phishing sfrutta la mancanza di formazione — vettore nel 90% degli attacchi",
+                "portable": "Moduli formazione NIS2, simulazioni phishing, tracciamento completamento"},
+        "q10": {"label": "Penetration test o audit di sicurezza indipendente almeno annuale",
+                "art": "Linee Guida ACN",
+                "weight": "MEDIO",
+                "consequence": "Vulnerabilità non rilevate, difficile dimostrare conformità a clienti e PA",
+                "portable": "Roadmap certificazione ISO 27001 con gap analysis e piano implementazione"},
+    },
+    "Importante": {
+        "q1": {"label": "Registrazione al portale ACN e designazione Punto di Contatto",
+               "art": "Art. 7 D.Lgs. 138/2024",
+               "weight": "CRITICO",
+               "consequence": "Obbligo legale — sanzioni fino a 7M€ o 1.4% fatturato",
+               "portable": "Checklist obblighi ACN e gestione documentale"},
+        "q2": {"label": "Responsabile della sicurezza informatica identificato",
+               "art": "Art. 20 D.Lgs. 138/2024",
+               "weight": "ALTO",
+               "consequence": "Mancanza di governance — responsabilità degli organi direttivi",
+               "portable": "Modulo CISO virtuale con supporto alla governance"},
+        "q3": {"label": "Analisi dei rischi (anche semplificata) documentata",
+               "art": "Art. 21.2.a",
+               "weight": "ALTO",
+               "consequence": "Impossibilità di dimostrare conformità in caso di audit",
+               "portable": "Analisi dei rischi guidata con report PDF NIS2"},
+        "q4": {"label": "Processo gestione incidenti con notifica ad ACN entro 72h",
+               "art": "Art. 24 D.Lgs. 138/2024",
+               "weight": "CRITICO",
+               "consequence": "Mancata notifica incidente = sanzione, anche per soggetti Importanti",
+               "portable": "Workflow notifica incidenti e template per ACN"},
+        "q5": {"label": "MFA attivo, backup verificati e cifratura dati critici",
+               "art": "Art. 21.2.h, i",
+               "weight": "ALTO",
+               "consequence": "Accesso non autorizzato, perdita dati e interruzione servizi",
+               "portable": "Verifica MFA, policy accessi, stato backup e cifratura"},
+        "q6": {"label": "Verifica sicurezza fornitori e partner critici",
+               "art": "Art. 21.2.d",
+               "weight": "ALTO",
+               "consequence": "Attacchi via supply chain in crescita costante",
+               "portable": "Questionario fornitori e scoring sicurezza supply chain"},
+        "q7": {"label": "Formazione cybersicurezza per dipendenti e collaboratori",
+               "art": "Art. 20 D.Lgs. 138/2024",
+               "weight": "MEDIO",
+               "consequence": "Phishing rimane il vettore principale degli incidenti",
+               "portable": "Moduli formazione e simulazioni phishing"},
+    },
+    "Fuori ambito": {
+        "q1": {"label": "Backup regolari, verificati e conservati off-site",
+               "art": "Best practice ENISA",
+               "weight": "MEDIO",
+               "consequence": "Perdita dati irreversibile in caso di ransomware o guasto",
+               "portable": "Verifica stato backup e piano di ripristino"},
+        "q2": {"label": "Aggiornamenti software e patch di sicurezza applicati regolarmente",
+               "art": "Best practice ENISA",
+               "weight": "MEDIO",
+               "consequence": "Sistemi non aggiornati = vulnerabilità note sfruttabili facilmente",
+               "portable": "Inventario software e stato aggiornamenti"},
+        "q3": {"label": "Formazione base sulla cybersicurezza per i dipendenti",
+               "art": "Best practice ENISA",
+               "weight": "BASSO",
+               "consequence": "Phishing e social engineering colpiscono anche le PMI",
+               "portable": "Moduli base formazione cybersicurezza"},
+    },
 }
 
 
-# Peso NIS2 per ogni domanda del questionario
-# weight: CRITICO / ALTO / MEDIO per categoria Essenziale e Importante
-QUESTIONNAIRE_GAPS = {
-    "q1": {
-        "label": "Registrazione ACN e Punto di Contatto",
-        "art": "Art. 7 D.Lgs. 138/2024",
-        "weight_essenziale": "CRITICO",
-        "weight_importante": "CRITICO",
-        "consequence": "Obbligo legale — sanzioni fino al 2% del fatturato globale o 10 M€",
-        "portable": "Checklist obblighi ACN, scadenzario registrazione e gestione documentale"
-    },
-    "q2": {
-        "label": "CISO / Responsabile Sicurezza Informatica",
-        "art": "Art. 20 D.Lgs. 138/2024",
-        "weight_essenziale": "CRITICO",
-        "weight_importante": "ALTO",
-        "consequence": "Mancanza di governance — responsabilità penale per gli organi direttivi",
-        "portable": "Modulo CISO virtuale: roadmap, KPI sicurezza, reportistica per il CdA"
-    },
-    "q3": {
-        "label": "Analisi dei Rischi documentata",
-        "art": "Art. 21.2.a",
-        "weight_essenziale": "CRITICO",
-        "weight_importante": "CRITICO",
-        "consequence": "Impossibilità di dimostrare conformità in audit — sanzione certa",
-        "portable": "Analisi dei rischi guidata (asset, minacce, impatto) con report PDF NIS2"
-    },
-    "q4": {
-        "label": "Gestione e Notifica Incidenti (entro 24h ad ACN)",
-        "art": "Art. 21.2.b + Art. 24",
-        "weight_essenziale": "CRITICO",
-        "weight_importante": "CRITICO",
-        "consequence": "Mancata notifica incidente = sanzione automatica fino a 10 M€",
-        "portable": "Workflow notifica incidenti, template per ACN, log degli eventi di sicurezza"
-    },
-    "q5": {
-        "label": "Politiche di accesso, MFA, backup e cifratura",
-        "art": "Art. 21.2.i, h",
-        "weight_essenziale": "ALTO",
-        "weight_importante": "ALTO",
-        "consequence": "Accesso non autorizzato a sistemi critici, perdita dati irreversibile",
-        "portable": "Verifica MFA, policy password, cifratura endpoint e stato backup"
-    },
-    "q6": {
-        "label": "Patch Management e gestione vulnerabilità",
-        "art": "Art. 21.2.e",
-        "weight_essenziale": "ALTO",
-        "weight_importante": "MEDIO",
-        "consequence": "Sistemi non aggiornati = vettore primario di attacchi ransomware",
-        "portable": "Inventario asset, stato patch OS/software, scansione vulnerabilità interne"
-    },
-    "q7": {
-        "label": "Verifica sicurezza dei fornitori (supply chain)",
-        "art": "Art. 21.2.d",
-        "weight_essenziale": "ALTO",
-        "weight_importante": "ALTO",
-        "consequence": "Il 62% degli attacchi NIS2 parte dalla supply chain — responsabilità estesa",
-        "portable": "Questionario fornitori, scoring supply chain, registro contratti con SLA sicurezza"
-    },
-    "q8": {
-        "label": "Formazione cybersicurezza per dipendenti",
-        "art": "Art. 20 D.Lgs. 138/2024",
-        "weight_essenziale": "MEDIO",
-        "weight_importante": "MEDIO",
-        "consequence": "Il phishing sfrutta la mancanza di formazione — vettore nel 90% degli attacchi",
-        "portable": "Moduli di formazione NIS2, simulazioni phishing, tracciamento completamento"
-    },
-    "q9": {
-        "label": "Certificazioni di sicurezza riconosciute",
-        "art": "Linee Guida ACN",
-        "weight_essenziale": "MEDIO",
-        "weight_importante": "BASSO",
-        "consequence": "Senza certificazioni, difficile dimostrare conformità a clienti e partner",
-        "portable": "Roadmap certificazione ISO 27001 con gap analysis e piano di implementazione"
-    },
-}
+def _parse_employees(employees_str):
+    """Restituisce il numero approssimativo di dipendenti dalla fascia."""
+    mapping = {'1-10': 5, '11-50': 30, '51-250': 150, '250+': 300}
+    return mapping.get(str(employees_str).strip(), 0)
 
 
-def get_nis2_category(ateco_code, employees_str):
-    if not ateco_code or ateco_code == "N/D":
-        return {"category": "N/D", "description": "Impossibile determinare senza ATECO"}
-    category = "Altro"
-    description = "Settore non classificato come essenziale/importante"
-    for sector, info in NIS2_SECTORS.items():
-        for prefix in info["ateco_prefix"]:
-            if ateco_code.startswith(prefix):
-                category = info["category"]
-                description = info["description"]
-                break
-        if category != "Altro":
-            break
-    try:
-        employees = int(''.join(filter(str.isdigit, str(employees_str))))
-        if category == "Importante" and employees >= 250:
-            category = "Essenziale"
-        elif category == "Altro" and employees >= 50:
-            category = "Importante"
-            description = "PMI in settore non critico ma con numero significativo di dipendenti"
-    except:
-        pass
-    return {"category": category, "description": description}
+def _parse_revenue(revenue_str):
+    """Restituisce True/False per large e medium basandosi sulla fascia fatturato."""
+    rev = str(revenue_str).strip().lower()
+    is_large  = rev == 'grande'          # > 50M€
+    is_medium = rev == 'media'           # 10–50M€
+    return is_large, is_medium
+
+
+def get_nis2_category(ateco_code, employees_str, revenue_str=''):
+    """
+    Classifica l'organizzazione secondo D.Lgs. 138/2024:
+    Essenziale / Importante / Fuori ambito / Non determinabile.
+    Richiede: ATECO + dipendenti + fascia fatturato.
+    """
+    if not ateco_code or str(ateco_code).strip().lower() in ('', 'n/d', 'altro', 'none'):
+        return {
+            "category": "Non determinabile",
+            "description": "Compilare ATECO, dipendenti e fascia fatturato per la classificazione",
+            "annex": None
+        }
+
+    clean = str(ateco_code).replace('.', '').replace(' ', '')
+
+    # PA — sempre Essenziale indipendentemente dalle dimensioni (Art. 3.1.f)
+    if clean.startswith('84'):
+        return {
+            "category": "Essenziale",
+            "description": "Pubblica Amministrazione — sempre Essenziale per legge",
+            "annex": "I"
+        }
+
+    in_annex_i  = any(clean.startswith(p.replace('.', '')) for p in ANNEX_I_PREFIXES)
+    in_annex_ii = any(clean.startswith(p.replace('.', '')) for p in ANNEX_II_PREFIXES)
+
+    emp      = _parse_employees(employees_str)
+    rev_large, rev_medium = _parse_revenue(revenue_str)
+
+    is_large  = (emp > 250)  or rev_large
+    is_medium = (50 <= emp <= 249) or rev_medium
+
+    if in_annex_i:
+        if is_large:
+            return {"category": "Essenziale",
+                    "description": "Grande organizzazione in settore Allegato I NIS2",
+                    "annex": "I"}
+        elif is_medium:
+            return {"category": "Importante",
+                    "description": "Media organizzazione in settore Allegato I NIS2",
+                    "annex": "I"}
+        else:
+            return {"category": "Fuori ambito",
+                    "description": "Piccola/micro impresa in settore NIS2 — obblighi non applicabili (salvo eccezioni)",
+                    "annex": "I_small"}
+    elif in_annex_ii:
+        if is_large or is_medium:
+            return {"category": "Importante",
+                    "description": "Organizzazione in settore Allegato II NIS2",
+                    "annex": "II"}
+        else:
+            return {"category": "Fuori ambito",
+                    "description": "Piccola/micro impresa — NIS2 non applicabile",
+                    "annex": "II_small"}
+    else:
+        return {"category": "Fuori ambito",
+                "description": "Settore non coperto dalla Direttiva NIS2",
+                "annex": None}
 
 
 def check_certification_equivalence(scan_results):
@@ -336,59 +434,49 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
         recommendations.append(f"Risolvere CNAME pendenti: {', '.join(dangling)} (Art. 21.2.e)")
 
     # nis2_info serve anche nel questionario per pesare i gap
-    nis2_info = get_nis2_category(company_data.get("ateco", ""), company_data.get("employees", ""))
+    nis2_info = get_nis2_category(
+        company_data.get("ateco", ""),
+        company_data.get("employees", ""),
+        company_data.get("revenue", "")
+    )
+
+    # Seleziona le domande appropriate per la categoria rilevata
+    _cat = nis2_info.get("category", "Fuori ambito")
+    question_map = QUESTION_MAP_BY_CATEGORY.get(_cat, QUESTION_MAP_BY_CATEGORY["Fuori ambito"])
 
     # ============================================================
-    # QUESTIONARIO (max 30 punti)
+    # QUESTIONARIO (max varia per categoria: 30pt Ess., 21pt Imp., 9pt Fuori)
     # ============================================================
     questionnaire_score = 0
     questionnaire_details = []
-
-    question_map = {
-        "q1": {"label": "Registrazione al portale ACN e Punto di Contatto", "art": "Art. 7 D.Lgs. 138/2024"},
-        "q2": {"label": "CISO o referente sicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
-        "q3": {"label": "Analisi dei rischi documentata", "art": "Art. 21.2.a"},
-        "q4": {"label": "Gestione e notifica incidenti", "art": "Art. 21.2.b"},
-        "q5": {"label": "Politiche di sicurezza e accessi (MFA, backup, cifratura)", "art": "Art. 21.2.i, h"},
-        "q6": {"label": "Patch management e gestione vulnerabilità", "art": "Art. 21.2.e"},
-        "q7": {"label": "Verifica sicurezza fornitori", "art": "Art. 21.2.d"},
-        "q8": {"label": "Formazione cybersicurezza", "art": "Art. 20 D.Lgs. 138/2024"},
-        "q9": {"label": "Certificazioni di sicurezza", "art": "ISO 27001 / Linee guida ACN"}
-    }
 
     questionnaire_gaps = []
     if questions:
         for key, info in question_map.items():
             answer = questions.get(key, "no")
+            label_str = f"{info['label']} ({info['art']})"
             if answer in ["si", "si_interno", "si_esterno", "iso27001", "altra"]:
                 questionnaire_score += 3
-                questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "si"})
+                questionnaire_details.append({"question": label_str, "answer": "si"})
             elif answer in ["parziale", "saltuaria", "in_corso"]:
                 questionnaire_score += 1.5
-                questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "parziale"})
-                # Gap parziale: inserisce con severità ridotta di un livello
-                gap_def = QUESTIONNAIRE_GAPS.get(key, {})
-                if gap_def:
-                    nis2_cat = nis2_info.get("category", "Altro")
-                    base_weight = gap_def.get("weight_essenziale" if nis2_cat == "Essenziale" else "weight_importante", "MEDIO")
-                    # Parziale: declassa di un livello
-                    weight = {"CRITICO": "ALTO", "ALTO": "MEDIO", "MEDIO": "BASSO"}.get(base_weight, "BASSO")
-                    questionnaire_gaps.append({
-                        "key": key, "label": gap_def["label"], "art": gap_def["art"],
-                        "answer": "parziale", "weight": weight,
-                        "consequence": gap_def["consequence"], "portable": gap_def["portable"]
-                    })
+                questionnaire_details.append({"question": label_str, "answer": "parziale"})
+                base_weight = info.get("weight", "MEDIO")
+                weight = {"CRITICO": "ALTO", "ALTO": "MEDIO", "MEDIO": "BASSO"}.get(base_weight, "BASSO")
+                questionnaire_gaps.append({
+                    "key": key, "label": info["label"], "art": info["art"],
+                    "answer": "parziale", "weight": weight,
+                    "consequence": info.get("consequence", ""),
+                    "portable": info.get("portable", "")
+                })
             else:
-                questionnaire_details.append({"question": f"{info['label']} ({info['art']})", "answer": "no"})
-                gap_def = QUESTIONNAIRE_GAPS.get(key, {})
-                if gap_def:
-                    nis2_cat = nis2_info.get("category", "Altro")
-                    weight = gap_def.get("weight_essenziale" if nis2_cat == "Essenziale" else "weight_importante", "MEDIO")
-                    questionnaire_gaps.append({
-                        "key": key, "label": gap_def["label"], "art": gap_def["art"],
-                        "answer": "no", "weight": weight,
-                        "consequence": gap_def["consequence"], "portable": gap_def["portable"]
-                    })
+                questionnaire_details.append({"question": label_str, "answer": "no"})
+                questionnaire_gaps.append({
+                    "key": key, "label": info["label"], "art": info["art"],
+                    "answer": "no", "weight": info.get("weight", "MEDIO"),
+                    "consequence": info.get("consequence", ""),
+                    "portable": info.get("portable", "")
+                })
 
     # ============================================================
     # CISO (max 5 punti)

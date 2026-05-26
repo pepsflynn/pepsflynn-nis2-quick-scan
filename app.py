@@ -161,21 +161,79 @@ HTML_TEMPLATE = r"""
             <label>Dominio aziendale</label>
             <input type="text" id="domain" placeholder="es. azienda.it">
             <small style="color:#a0aec0; display:block; margin-top:-5px; margin-bottom:10px;">Dominio per i controlli del sito web e dei record DNS.</small>
-            <label>Settore (codice ATECO principale)</label>
-            <select id="ateco">
-                <option value="">Seleziona il tuo settore...</option>
-                <option value="35">Energia</option><option value="49">Trasporti</option><option value="86">Sanita</option>
-                <option value="61">ICT - TLC</option><option value="62">ICT - Servizi</option><option value="63">ICT - DC</option>
-                <option value="64">Finanza</option><option value="84">PA</option><option value="altro">Altro</option>
+            <label>Settore (codice ATECO principale)
+                <a href="https://www.ufficiocamerale.it/trova-azienda" target="_blank"
+                   style="font-size:11px;color:#63b3ed;margin-left:8px;font-weight:400;">
+                   🔍 Cerca ATECO →</a>
+            </label>
+            <select id="ateco" onchange="computeNIS2Category()">
+                <option value="">— Seleziona il settore principale —</option>
+                <optgroup label="Allegato I — Settori Essenziali">
+                    <option value="35">Energia elettrica, gas, vapore (35.x)</option>
+                    <option value="06">Estrazione petrolio e gas naturale (06.x)</option>
+                    <option value="19">Raffinerie e prodotti petroliferi (19.x)</option>
+                    <option value="49">Trasporti terrestri e oleodotti (49.x)</option>
+                    <option value="50">Trasporti marittimi e per vie d'acqua (50.x)</option>
+                    <option value="51">Trasporti aerei (51.x)</option>
+                    <option value="52">Magazzinaggio e supporto ai trasporti (52.x)</option>
+                    <option value="36">Raccolta e trattamento acqua potabile (36.x)</option>
+                    <option value="37">Gestione acque reflue (37.x)</option>
+                    <option value="61">Telecomunicazioni (61.x)</option>
+                    <option value="62">Produzione software e servizi IT (62.x)</option>
+                    <option value="63">Elaborazione dati e data center (63.x)</option>
+                    <option value="64">Banche e intermediazione creditizia (64.x)</option>
+                    <option value="65">Assicurazioni e fondi pensione (65.x)</option>
+                    <option value="66">Attività ausiliarie dei servizi finanziari (66.x)</option>
+                    <option value="84">Pubblica Amministrazione (84.x)</option>
+                    <option value="86">Assistenza ospedaliera e sanitaria (86.x)</option>
+                    <option value="87">Assistenza residenziale (87.x)</option>
+                    <option value="88">Assistenza sociale non residenziale (88.x)</option>
+                </optgroup>
+                <optgroup label="Allegato II — Settori Importanti">
+                    <option value="53">Servizi postali e corrieri (53.x)</option>
+                    <option value="38">Raccolta e smaltimento rifiuti (38.x)</option>
+                    <option value="20">Fabbricazione prodotti chimici (20.x)</option>
+                    <option value="21">Fabbricazione prodotti farmaceutici (21.x)</option>
+                    <option value="22">Fabbricazione materie plastiche e gomma (22.x)</option>
+                    <option value="10">Industria alimentare (10.x)</option>
+                    <option value="11">Industria delle bevande (11.x)</option>
+                    <option value="24">Metallurgia (24.x)</option>
+                    <option value="25">Fabbricazione prodotti in metallo (25.x)</option>
+                    <option value="26">Fabbricazione apparecchi elettronici (26.x)</option>
+                    <option value="27">Fabbricazione apparecchiature elettriche (27.x)</option>
+                    <option value="28">Fabbricazione macchinari industriali (28.x)</option>
+                    <option value="29">Fabbricazione autoveicoli (29.x)</option>
+                    <option value="30">Fabbricazione altri mezzi di trasporto (30.x)</option>
+                    <option value="72">Ricerca e sviluppo scientifico (72.x)</option>
+                    <option value="73">Ricerca e sviluppo in ingegneria (73.x)</option>
+                    <option value="58">Editoria e media (58-60.x)</option>
+                </optgroup>
+                <optgroup label="Fuori ambito NIS2">
+                    <option value="altro">Altro settore (commercio, turismo, ristorazione…)</option>
+                </optgroup>
             </select>
             <div id="ateco-hint" style="display:none; font-size:12px; margin-top:-6px; margin-bottom:10px; padding:8px 10px; border-radius:6px;"></div>
+
             <label>Numero dipendenti</label>
-            <select id="employees">
+            <select id="employees" onchange="computeNIS2Category()">
                 <option value="">Seleziona...</option>
-                <option value="1-10">1-10</option><option value="11-50">11-50</option>
-                <option value="51-250">51-250</option><option value="250+">Oltre 250</option>
+                <option value="1-10">1 – 10 (micro impresa)</option>
+                <option value="11-50">11 – 50 (piccola impresa)</option>
+                <option value="51-250">51 – 250 (media impresa)</option>
+                <option value="250+">Oltre 250 (grande impresa)</option>
             </select>
             <div id="employees-hint" style="display:none; font-size:12px; margin-top:-6px; margin-bottom:10px; padding:8px 10px; border-radius:6px;"></div>
+
+            <label>Fascia fatturato annuo</label>
+            <select id="revenue" onchange="computeNIS2Category()">
+                <option value="">Seleziona...</option>
+                <option value="micro">Fino a 2 M€ (micro impresa)</option>
+                <option value="piccola">2 – 10 M€ (piccola impresa)</option>
+                <option value="media">10 – 50 M€ (media impresa)</option>
+                <option value="grande">Oltre 50 M€ (grande impresa)</option>
+            </select>
+
+            <div id="nis2-badge" style="display:none; border-radius:8px; padding:12px 14px; margin:10px 0 14px;"></div>
             <button onclick="goToStep2()">Avanti</button>
         </div>
 
@@ -217,108 +275,10 @@ HTML_TEMPLATE = r"""
 
         <!-- STEP 3: QUESTIONARIO -->
         <div class="card hidden" id="step3">
-            <h3>📋 Questionario di Autovalutazione NIS2</h3>
-            <p style="color:#a0aec0; margin-bottom:5px;">Rispondi alle domande per valutare la conformita al <strong>D.Lgs. 138/2024</strong>.</p>
-            <p class="total-questions">9 domande • Tempo stimato: 3 minuti</p>
-
-            <div class="section-header"><span class="section-icon">🏛️</span><div class="section-title">A. Registrazione e Governance</div></div>
-            <div class="question-block">
-                <span class="question-number">1</span><span class="law-ref">Art. 7 D.Lgs. 138/2024</span>
-                <p class="question-title">Registrazione al portale ACN e designazione del Punto di Contatto</p>
-                <p class="question-desc">La vostra organizzazione ha completato la registrazione e ha designato un Punto di Contatto?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q1" value="si"><span>✅ Completata</span></label>
-                    <label><input type="radio" name="q1" value="no"><span>❌ Non ancora</span></label>
-                </div>
-            </div>
-            <div class="question-block">
-                <span class="question-number">2</span><span class="law-ref">Art. 20 D.Lgs. 138/2024</span>
-                <p class="question-title">Responsabile della Sicurezza Informatica (CISO)</p>
-                <p class="question-desc">Avete nominato un CISO o referente per la sicurezza, interno o esterno?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q2" value="si_interno"><span>🏢 CISO interno</span></label>
-                    <label><input type="radio" name="q2" value="si_esterno"><span>🔗 Consulente esterno</span></label>
-                    <label><input type="radio" name="q2" value="no"><span>❌ Nessuno</span></label>
-                </div>
-            </div>
-
-            <div class="section-header"><span class="section-icon">🛡️</span><div class="section-title">B. Analisi dei Rischi e Gestione Incidenti</div></div>
-            <div class="question-block">
-                <span class="question-number">3</span><span class="law-ref">Art. 21, comma 2, lett. a</span>
-                <p class="question-title">Analisi dei Rischi Documentata</p>
-                <p class="question-desc">Disponete di un'analisi dei rischi formalizzata e aggiornata?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q3" value="si"><span>✅ Sì</span></label>
-                    <label><input type="radio" name="q3" value="parziale"><span>⚠️ In elaborazione</span></label>
-                    <label><input type="radio" name="q3" value="no"><span>❌ No</span></label>
-                </div>
-            </div>
-            <div class="question-block">
-                <span class="question-number">4</span><span class="law-ref">Art. 21, comma 2, lett. b</span>
-                <p class="question-title">Gestione e Notifica degli Incidenti</p>
-                <p class="question-desc">Avete un sistema di notifica incidenti ad ACN entro 24 ore?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q4" value="si"><span>✅ Testato</span></label>
-                    <label><input type="radio" name="q4" value="parziale"><span>⚠️ Non testato</span></label>
-                    <label><input type="radio" name="q4" value="no"><span>❌ No</span></label>
-                </div>
-            </div>
-
-            <div class="section-header"><span class="section-icon">🔐</span><div class="section-title">C. Misure Tecniche di Sicurezza</div></div>
-            <div class="question-block">
-                <span class="question-number">5</span><span class="law-ref">Art. 21, comma 2, lett. i, h</span>
-                <p class="question-title">Politiche di Accesso e Protezione Dati (MFA, backup, cifratura)</p>
-                <p class="question-desc">Applicate MFA, minimo privilegio, backup regolari e cifratura?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q5" value="si"><span>✅ Implementate</span></label>
-                    <label><input type="radio" name="q5" value="parziale"><span>⚠️ Parziali</span></label>
-                    <label><input type="radio" name="q5" value="no"><span>❌ No</span></label>
-                </div>
-            </div>
-            <div class="question-block">
-                <span class="question-number">6</span><span class="law-ref">Art. 21, comma 2, lett. e</span>
-                <p class="question-title">Patch Management e Gestione Vulnerabilità</p>
-                <p class="question-desc">Avete un processo di aggiornamento sicurezza per tutti i sistemi critici?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q6" value="si"><span>✅ Automatizzato</span></label>
-                    <label><input type="radio" name="q6" value="parziale"><span>⚠️ Manuale</span></label>
-                    <label><input type="radio" name="q6" value="no"><span>❌ No</span></label>
-                </div>
-            </div>
-
-            <div class="section-header"><span class="section-icon">🔗</span><div class="section-title">D. Supply Chain, Formazione e Certificazioni</div></div>
-            <div class="question-block">
-                <span class="question-number">7</span><span class="law-ref">Art. 21, comma 2, lett. d</span>
-                <p class="question-title">Verifica della Sicurezza dei Fornitori</p>
-                <p class="question-desc">Verificate la sicurezza informatica dei vostri fornitori?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q7" value="si"><span>✅ Audit periodici</span></label>
-                    <label><input type="radio" name="q7" value="parziale"><span>⚠️ Solo critici</span></label>
-                    <label><input type="radio" name="q7" value="no"><span>❌ No</span></label>
-                </div>
-            </div>
-            <div class="question-block">
-                <span class="question-number">8</span><span class="law-ref">Art. 20, comma 2</span>
-                <p class="question-title">Formazione sulla Cybersicurezza</p>
-                <p class="question-desc">Effettuate formazione periodica per dipendenti e amministratori?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q8" value="si"><span>✅ Annuale</span></label>
-                    <label><input type="radio" name="q8" value="saltuaria"><span>⚠️ Saltuaria</span></label>
-                    <label><input type="radio" name="q8" value="no"><span>❌ No</span></label>
-                </div>
-            </div>
-            <div class="question-block">
-                <span class="question-number">9</span><span class="law-ref">Linee Guida ACN</span>
-                <p class="question-title">Certificazioni di Sicurezza</p>
-                <p class="question-desc">Possedete certificazioni riconosciute (ISO 27001, SOC2, etc.)?</p>
-                <div class="radio-group">
-                    <label><input type="radio" name="q9" value="iso27001"><span>🏅 ISO 27001</span></label>
-                    <label><input type="radio" name="q9" value="altra"><span>🏅 Altra</span></label>
-                    <label><input type="radio" name="q9" value="in_corso"><span>🔄 In corso</span></label>
-                    <label><input type="radio" name="q9" value="no"><span>❌ Nessuna</span></label>
-                </div>
-            </div>
-
+            <h3>📋 Questionario NIS2</h3>
+            <p id="q-intro" style="color:#a0aec0; margin-bottom:5px; font-size:13px;"></p>
+            <div id="q-category-badge" style="display:none; border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:13px;"></div>
+            <div id="questionnaire-container"></div>
             <button onclick="startFullScan()" class="btn-full" style="margin-top:25px;">🚀 Genera Report Quick Scan NIS2</button>
         </div>
 
@@ -469,6 +429,155 @@ HTML_TEMPLATE = r"""
             return true;
         }
 
+        // ── NIS2 category helpers ─────────────────────────────────────
+        var ANNEX_I  = ['05','06','07','08','09','19','35','36','37','49','50','51','52','61','62','63','64','65','66','84','86','87','88'];
+        var ANNEX_II = ['10','11','13','14','20','21','22','24','25','26','27','28','29','30','38','39','53','58','59','60','72','73'];
+
+        function isAnnexI(code)  { var c = code.replace(/\./g,''); return ANNEX_I.some(function(p){ return c.startsWith(p); }); }
+        function isAnnexII(code) { var c = code.replace(/\./g,''); return ANNEX_II.some(function(p){ return c.startsWith(p); }); }
+
+        function computeNIS2Category() {
+            var ateco    = document.getElementById('ateco').value;
+            var emp      = document.getElementById('employees').value;
+            var rev      = document.getElementById('revenue') ? document.getElementById('revenue').value : '';
+            var badge    = document.getElementById('nis2-badge');
+            if (!badge) return;
+            if (!ateco || !emp) { badge.style.display='none'; window._nis2Category=''; return; }
+
+            var isLarge  = emp === '250+' || rev === 'grande';
+            var isMedium = (emp === '51-250' || rev === 'media') && !isLarge;
+            var cat, desc, bg, border, color;
+
+            if (ateco === '84') {
+                cat='Essenziale'; desc='Pubblica Amministrazione — sempre Essenziale per legge';
+            } else if (isAnnexI(ateco)) {
+                if (isLarge)       { cat='Essenziale'; desc='Grande organizzazione in settore Allegato I NIS2'; }
+                else if (isMedium) { cat='Importante'; desc='Media organizzazione in settore Allegato I NIS2'; }
+                else               { cat='Fuori ambito'; desc='Piccola/micro impresa — NIS2 non obbligatorio (salvo eccezioni)'; }
+            } else if (isAnnexII(ateco)) {
+                if (isLarge || isMedium) { cat='Importante'; desc='Organizzazione in settore Allegato II NIS2'; }
+                else                     { cat='Fuori ambito'; desc='Piccola/micro impresa — NIS2 non applicabile'; }
+            } else {
+                cat='Fuori ambito'; desc='Settore non coperto dalla Direttiva NIS2';
+            }
+
+            var styles = {
+                'Essenziale':     { bg:'rgba(252,129,129,0.12)', border:'rgba(252,129,129,0.5)', color:'#fc8181', icon:'🔴' },
+                'Importante':     { bg:'rgba(246,224,94,0.10)',  border:'rgba(246,224,94,0.5)',  color:'#f6e05e', icon:'🟡' },
+                'Fuori ambito':   { bg:'rgba(99,179,237,0.08)',  border:'rgba(99,179,237,0.35)', color:'#63b3ed', icon:'⬜' },
+                'Non determinabile': { bg:'rgba(160,174,192,0.1)', border:'rgba(160,174,192,0.3)', color:'#a0aec0', icon:'❓' }
+            };
+            var st = styles[cat] || styles['Non determinabile'];
+            badge.style.display='block';
+            badge.style.background=st.bg; badge.style.border='1px solid '+st.border;
+            badge.innerHTML = st.icon+' Categoria NIS2 rilevata: <strong style="color:'+st.color+';">'+cat+'</strong> &mdash; <span style="color:#a0aec0;font-size:12px;">'+desc+'</span>';
+            window._nis2Category = cat;
+            if (!rev) badge.innerHTML += '<br><span style="color:#718096;font-size:11px;margin-top:4px;display:block;">⚠️ Aggiungere la fascia fatturato per una classificazione più precisa</span>';
+        }
+
+        // ── Questionnaire catalog ─────────────────────────────────
+        var Q_CATALOG = {
+            "Essenziale": [
+                { id:"q1",  label:"Registrazione ACN + Punto di Contatto formale designato",         art:"Art. 7 D.Lgs. 138/2024",  badge:"OBBLIGO LEGALE", bc:"#fc8181",
+                  opts:[{v:"si",l:"✅ Sì, completato e documentato"},{v:"in_corso",l:"⚠️ In corso / parziale"},{v:"no",l:"❌ No"}] },
+                { id:"q2",  label:"CISO designato formalmente con mandato scritto e budget dedicato", art:"Art. 20 D.Lgs. 138/2024", badge:"OBBLIGO LEGALE", bc:"#fc8181",
+                  opts:[{v:"si_interno",l:"✅ Sì, interno"},{v:"si_esterno",l:"✅ Sì, consulente esterno"},{v:"parziale",l:"⚠️ Identificato ma senza mandato formale"},{v:"no",l:"❌ No"}] },
+                { id:"q3",  label:"Analisi dei rischi documentata e aggiornata almeno annualmente",  art:"Art. 21.2.a",             badge:"OBBLIGO LEGALE", bc:"#fc8181",
+                  opts:[{v:"si",l:"✅ Sì, documentata e aggiornata"},{v:"parziale",l:"⚠️ Presente ma non aggiornata"},{v:"no",l:"❌ No"}] },
+                { id:"q4",  label:"Piano notifica incidenti ad ACN 24h (primo report) + 72h (dettaglio)", art:"Art. 24 D.Lgs. 138/2024", badge:"OBBLIGO LEGALE", bc:"#fc8181",
+                  opts:[{v:"si",l:"✅ Sì, piano testato"},{v:"parziale",l:"⚠️ Processo definito ma non testato"},{v:"no",l:"❌ No"}] },
+                { id:"q5",  label:"Business Continuity Plan (BCP) formale e testato con esercitazioni", art:"Art. 21.2.c",           badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, BCP formale testato"},{v:"parziale",l:"⚠️ BCP redatto ma non testato"},{v:"no",l:"❌ No"}] },
+                { id:"q6",  label:"MFA obbligatorio, cifratura endpoint, password policy formale",   art:"Art. 21.2.h, i",          badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, tutto implementato"},{v:"parziale",l:"⚠️ Parzialmente implementato"},{v:"no",l:"❌ No"}] },
+                { id:"q7",  label:"Patch management strutturato con SLA definiti e registro vulnerabilità", art:"Art. 21.2.e",      badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, processo strutturato"},{v:"parziale",l:"⚠️ Gestito ma non formalizzato"},{v:"no",l:"❌ No"}] },
+                { id:"q8",  label:"Audit sicurezza fornitori critici + contratti con clausole security", art:"Art. 21.2.d",         badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, audit e contratti aggiornati"},{v:"parziale",l:"⚠️ Solo verifica informale"},{v:"no",l:"❌ No"}] },
+                { id:"q9",  label:"Formazione cybersicurezza obbligatoria, documentata e verificata", art:"Art. 20 D.Lgs. 138/2024", badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, programma strutturato"},{v:"saltuaria",l:"⚠️ Occasionale"},{v:"no",l:"❌ No"}] },
+                { id:"q10", label:"Penetration test o audit di sicurezza indipendente (almeno annuale)", art:"Linee Guida ACN",     badge:"RACCOMANDATO", bc:"#f6e05e",
+                  opts:[{v:"si",l:"✅ Sì, regolare"},{v:"parziale",l:"⚠️ Eseguito almeno una volta"},{v:"no",l:"❌ No"}] },
+            ],
+            "Importante": [
+                { id:"q1", label:"Registrazione al portale ACN e designazione Punto di Contatto",    art:"Art. 7 D.Lgs. 138/2024",  badge:"OBBLIGO LEGALE", bc:"#fc8181",
+                  opts:[{v:"si",l:"✅ Sì, completato"},{v:"in_corso",l:"⚠️ In corso"},{v:"no",l:"❌ No"}] },
+                { id:"q2", label:"Responsabile della sicurezza informatica identificato",            art:"Art. 20 D.Lgs. 138/2024",  badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si_interno",l:"✅ Sì, interno"},{v:"si_esterno",l:"✅ Sì, esterno"},{v:"parziale",l:"⚠️ Identificato informalmente"},{v:"no",l:"❌ No"}] },
+                { id:"q3", label:"Analisi dei rischi (anche semplificata) documentata",              art:"Art. 21.2.a",               badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, documentata"},{v:"parziale",l:"⚠️ Informale / non aggiornata"},{v:"no",l:"❌ No"}] },
+                { id:"q4", label:"Processo gestione incidenti con notifica ad ACN entro 72h",       art:"Art. 24 D.Lgs. 138/2024",  badge:"OBBLIGO LEGALE", bc:"#fc8181",
+                  opts:[{v:"si",l:"✅ Sì, processo definito"},{v:"parziale",l:"⚠️ Gestito caso per caso"},{v:"no",l:"❌ No"}] },
+                { id:"q5", label:"MFA attivo, backup verificati e cifratura dati critici",          art:"Art. 21.2.h, i",            badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, implementato"},{v:"parziale",l:"⚠️ Parzialmente"},{v:"no",l:"❌ No"}] },
+                { id:"q6", label:"Verifica sicurezza fornitori e partner critici",                  art:"Art. 21.2.d",               badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, verificati"},{v:"parziale",l:"⚠️ Solo i più critici"},{v:"no",l:"❌ No"}] },
+                { id:"q7", label:"Formazione cybersicurezza per dipendenti e collaboratori",        art:"Art. 20 D.Lgs. 138/2024",  badge:"OBBLIGATORIO", bc:"#f6ad55",
+                  opts:[{v:"si",l:"✅ Sì, programma attivo"},{v:"saltuaria",l:"⚠️ Occasionale"},{v:"no",l:"❌ No"}] },
+            ],
+            "Fuori ambito": [
+                { id:"q1", label:"Backup regolari, verificati e conservati off-site",               art:"Best practice ENISA",       badge:"CONSIGLIATO", bc:"#63b3ed",
+                  opts:[{v:"si",l:"✅ Sì, regolari e verificati"},{v:"parziale",l:"⚠️ Presenti ma non verificati"},{v:"no",l:"❌ No"}] },
+                { id:"q2", label:"Aggiornamenti software e patch di sicurezza applicati",           art:"Best practice ENISA",       badge:"CONSIGLIATO", bc:"#63b3ed",
+                  opts:[{v:"si",l:"✅ Sì, regolari"},{v:"parziale",l:"⚠️ Solo sistemi critici"},{v:"no",l:"❌ No"}] },
+                { id:"q3", label:"Formazione base sulla cybersicurezza per i dipendenti",           art:"Best practice ENISA",       badge:"CONSIGLIATO", bc:"#63b3ed",
+                  opts:[{v:"si",l:"✅ Sì, almeno una volta"},{v:"no",l:"❌ No"}] },
+            ]
+        };
+
+        function renderQuestionnaire() {
+            var cat = window._nis2Category || 'Fuori ambito';
+            var qs  = Q_CATALOG[cat] || Q_CATALOG['Fuori ambito'];
+            var container = document.getElementById('questionnaire-container');
+            var intro     = document.getElementById('q-intro');
+            var catBadge  = document.getElementById('q-category-badge');
+
+            var catStyles = {
+                'Essenziale':   {bg:'rgba(252,129,129,0.1)', border:'rgba(252,129,129,0.4)', color:'#fc8181', text:'Soggetto Essenziale NIS2 — '+qs.length+' domande obbligatorie D.Lgs. 138/2024'},
+                'Importante':   {bg:'rgba(246,224,94,0.08)', border:'rgba(246,224,94,0.4)',  color:'#f6e05e', text:'Soggetto Importante NIS2 — '+qs.length+' domande obbligatorie D.Lgs. 138/2024'},
+                'Fuori ambito': {bg:'rgba(99,179,237,0.08)', border:'rgba(99,179,237,0.3)',  color:'#63b3ed', text:'Fuori ambito NIS2 — '+qs.length+' domande di autovalutazione volontaria'},
+            };
+            var cs = catStyles[cat] || catStyles['Fuori ambito'];
+            catBadge.style.display='block';
+            catBadge.style.background=cs.bg; catBadge.style.border='1px solid '+cs.border;
+            catBadge.innerHTML='<strong style="color:'+cs.color+';">'+cat+'</strong> &mdash; '+cs.text;
+
+            var introMap = {
+                'Essenziale':   'Questionario calibrato per <strong>soggetti essenziali</strong>: domande allineate agli obblighi legali del D.Lgs. 138/2024.',
+                'Importante':   'Questionario calibrato per <strong>soggetti importanti</strong>: obblighi NIS2 con requisiti proporzionati alla categoria.',
+                'Fuori ambito': 'La tua organizzazione non è soggetta agli obblighi NIS2. Le domande seguenti valutano la maturità di sicurezza come <strong>best practice volontarie</strong>.',
+            };
+            intro.innerHTML = introMap[cat] || introMap['Fuori ambito'];
+
+            var html = '';
+            qs.forEach(function(q, i) {
+                html += '<div style="background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.08);border-radius:8px;padding:14px 16px;margin-bottom:12px;">';
+                html += '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">';
+                html += '<span style="background:rgba(255,255,255,0.08);color:#a0aec0;font-size:11px;padding:2px 7px;border-radius:4px;white-space:nowrap;">'+(i+1)+'/'+qs.length+'</span>';
+                html += '<span style="background:'+q.bc+';color:#0a1628;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;">'+q.badge+'</span>';
+                html += '<div><strong style="font-size:13px;color:#e2e8f0;">'+q.label+'</strong>';
+                html += '<span style="font-size:11px;color:#718096;margin-left:8px;">'+q.art+'</span></div></div>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+                q.opts.forEach(function(o) {
+                    html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:6px 12px;font-size:13px;color:#cbd5e0;">';
+                    html += '<input type="radio" name="'+q.id+'" value="'+o.v+'" style="accent-color:#63b3ed;">'+o.l+'</label>';
+                });
+                html += '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function collectQuestions() {
+            var cat = window._nis2Category || 'Fuori ambito';
+            var qs  = Q_CATALOG[cat] || Q_CATALOG['Fuori ambito'];
+            var result = {};
+            qs.forEach(function(q) {
+                var el = document.querySelector('input[name="'+q.id+'"]:checked');
+                result[q.id] = el ? el.value : 'no';
+            });
+            return result;
+        }
+
         function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
 
         function checkEmailDomain() {
@@ -582,6 +691,7 @@ HTML_TEMPLATE = r"""
 
         function goToStep3() {
             if (!dnsVerified || !otpVerified) { alert("Completa le verifiche"); return; }
+            renderQuestionnaire();
             document.getElementById("step2").classList.add("hidden");
             document.getElementById("step3").classList.remove("hidden");
             document.getElementById("step3-indicator").classList.add("active");
@@ -589,12 +699,8 @@ HTML_TEMPLATE = r"""
         }
 
         function startFullScan() {
-            var q = {};
-            for (var i = 1; i <= 9; i++) {
-                var s = document.querySelector("input[name='q"+i+"']:checked");
-                if (!s) { alert("Rispondi a tutte le domande (manca n." + i + ")"); return; }
-                q["q"+i] = s.value;
-            }
+            var q = collectQuestions();
+            var revenue = document.getElementById('revenue') ? document.getElementById('revenue').value : '';
             document.getElementById("step3").classList.add("hidden");
             var l = document.getElementById("loading"); if (l) l.style.display = "block";
             fetch("/api/scan", {
@@ -604,6 +710,8 @@ HTML_TEMPLATE = r"""
                     domain: document.getElementById("domain").value.trim(),
                     ateco: document.getElementById("ateco").value,
                     employees: document.getElementById("employees").value,
+                    revenue: revenue,
+                    nis2_category: window._nis2Category || "",
                     email: document.getElementById("email").value.trim(),
                     dns_verified: dnsVerified, otp_verified: otpVerified,
                     questions: q
@@ -1040,9 +1148,11 @@ def scan():
     data = request.json
     company_data = lookup_company(data.get('vat_number', ''))
     if company_data is None:
-        company_data = {"name": "Partita IVA non trovata", "ateco": data.get('ateco','N/D'), "employees": data.get('employees','N/D'), "address": "N/D", "status": "error"}
+        company_data = {"name": "Partita IVA non trovata", "ateco": data.get('ateco','N/D'), "employees": data.get('employees','N/D'), "revenue": data.get('revenue',''), "address": "N/D", "status": "error"}
     else:
-        company_data["ateco"] = data.get('ateco','N/D'); company_data["employees"] = data.get('employees','N/D')
+        company_data["ateco"]    = data.get('ateco', 'N/D')
+        company_data["employees"] = data.get('employees', 'N/D')
+        company_data["revenue"]   = data.get('revenue', '')
     questions = data.get('questions', {})
     company_data["ciso"] = "Interno" if questions.get('q2') == 'si_interno' else "Consulente esterno" if questions.get('q2') == 'si_esterno' else "Assente"
     company_data["email"] = data.get('email','')
