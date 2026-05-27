@@ -261,37 +261,42 @@ HTML_TEMPLATE = r"""
                 WAF • CMS e tecnologie • File sensibili esposti • DMARC • SPF • DNSSEC • Subdomain takeover
             </div>
             
+            <!-- OTP PRIMA -->
             <div class="verification-section">
-                <div class="section-title">📧 Verifica DNS Email</div>
+                <div class="section-title">🔐 Passo 1 — Verifica Identità (OTP)</div>
+                <p style="font-size:12px;color:#a0aec0;margin-bottom:10px;">
+                    Inserisci la tua email aziendale e invia il codice OTP per confermare che il dominio ti appartiene.
+                    Scade in 10 minuti.<span id="otp-countdown" style="display:none;font-size:12px;color:#f6ad55;"></span>
+                </p>
                 <label>Email aziendale</label>
                 <input type="email" id="email" placeholder="es. sicurezza@azienda.it" oninput="checkEmailDomain()">
                 <div id="email-domain-warning" style="display:none;font-size:12px;padding:7px 10px;border-radius:6px;margin:4px 0 6px;"></div>
-                <button class="btn-small" onclick="verifyDNS()" id="btn-dns">Verifica DNS</button>
-                <div id="dns-result"></div>
-            </div>
-            <div class="verification-section">
-                <div class="section-title">🔐 Verifica Identità (OTP)</div>
-                <p style="font-size:12px;color:#a0aec0;margin-bottom:10px;">
-                    Inviamo un codice a 6 cifre all'email inserita sopra per verificare che esista e che tu ne abbia accesso.
-                    Scade in 10 minuti.<span id="otp-countdown" style="display:none;font-size:12px;color:#f6ad55;"></span>
-                </p>
-                <button class="btn-small btn-outline" onclick="sendOTP()" id="btn-otp">📧 Invia codice OTP</button>
+                <button class="btn-small" onclick="sendOTP()" id="btn-otp" style="margin-top:8px;">📧 Invia codice OTP</button>
                 <div id="otp-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;"></div>
                 <div id="otp-verify-section" style="display:none;margin-top:12px;">
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <input type="text" id="otp-code" placeholder="Inserisci il codice a 6 cifre"
+                        <input type="text" id="otp-code" placeholder="Codice a 6 cifre"
                                style="flex:1;min-width:160px;letter-spacing:6px;font-size:18px;text-align:center;"
-                               maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
-                        <button class="btn-small" onclick="verifyOTP()" id="btn-verify-otp">✅ Verifica</button>
+                               maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')">
+                        <button class="btn-small" onclick="verifyOTP()" id="btn-verify-otp">✅ Verifica codice</button>
                     </div>
                     <div id="otp-verify-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;"></div>
                     <p style="font-size:11px;color:#718096;margin-top:8px;">
-                        Non hai ricevuto l'email? Controlla lo spam oppure
+                        Non hai ricevuto l\'email? Controlla lo spam oppure
                         <a href="#" onclick="sendOTP();return false;" style="color:#63b3ed;">invia di nuovo</a>.
                     </p>
                 </div>
             </div>
-            
+
+            <!-- DNS DOPO — visibile solo dopo OTP verificato -->
+            <div class="verification-section" id="dns-section" style="display:none;opacity:0;transition:opacity .4s;">
+                <div class="section-title">📧 Passo 2 — Verifica DNS Email</div>
+                <p style="font-size:12px;color:#a0aec0;margin-bottom:10px;">
+                    Identità confermata ✅ — Ora analizziamo i record DNS del tuo dominio email.
+                </p>
+                <button class="btn-small" onclick="verifyDNS()" id="btn-dns">🔍 Avvia verifica DNS</button>
+                <div id="dns-result"></div>
+            </div>
             <div style="background:rgba(43,108,176,0.1);border:1px solid rgba(43,108,176,0.3);border-radius:8px;padding:12px;margin-top:15px;">
                 <p style="font-size:13px;color:#63b3ed;"><strong>🏢 Rete interna — solo versione portable</strong></p>
                 <p style="font-size:12px;color:#a0aec0;">RDP, SMB, firewall, antivirus, BitLocker, porte interne e crittografia endpoint richiedono la <strong>versione portable</strong> da eseguire sulla rete aziendale.</p>
@@ -807,6 +812,13 @@ HTML_TEMPLATE = r"""
                         status.innerHTML='✅ <strong>Email verificata.</strong> ' + (d.message || '');
                     }
                     otpVerified = true; checkBoth();
+                    // Mostra la sezione DNS solo dopo OTP verificato
+                    var dnsSec = document.getElementById("dns-section");
+                    if (dnsSec) {
+                        dnsSec.style.display = "block";
+                        setTimeout(function(){ dnsSec.style.opacity = "1"; }, 50);
+                        dnsSec.scrollIntoView({ behavior:"smooth", block:"start" });
+                    }
                     document.getElementById("goto-step3").disabled = !(dnsVerified && otpVerified);
                 } else {
                     if (status) {
