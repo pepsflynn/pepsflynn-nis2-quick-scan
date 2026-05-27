@@ -773,6 +773,8 @@ HTML_TEMPLATE = r"""
 
         function displayResults(d) {
             var s = d.score, rc = s.risk_color === "ok" ? "green" : s.risk_color === "warning" ? "yellow" : "red";
+            var cat = s.nis2_category ? s.nis2_category.category : "Fuori ambito";
+            var catColor = cat === "Essenziale" ? "#fc8181" : cat === "Importante" ? "#f6e05e" : cat === "Fornitore NIS2" ? "#b794f4" : "#63b3ed";
 
             // ---- HEADER REPORT ----
             var h = "<div class='card' style='text-align:center;'><h2>Report Quick Scan NIS2</h2>";
@@ -865,7 +867,7 @@ HTML_TEMPLATE = r"""
 
                 h += "<div class='card'>";
                 h += "<h3>📋 Analisi Lacune Governance NIS2</h3>";
-                h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:16px;'>Peso delle lacune in base alla categoria NIS2 dell'organizzazione (<strong style='color:" + (s.nis2_category.category === 'Essenziale' ? '#fc8181' : '#f6e05e') + ";'>" + s.nis2_category.category + "</strong>).</p>";
+                h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:16px;'>Peso delle lacune in base alla categoria (<strong style='color:" + catColor + ";'>" + cat + "</strong>).</p>";
 
                 function renderGaps(gaps) {
                     var out = "";
@@ -897,11 +899,13 @@ HTML_TEMPLATE = r"""
             // ---- NIS2 READINESS SUMMARY ----
             if (s.nis2_readiness) {
                 var nr = s.nis2_readiness;
-                var cat = s.nis2_category ? s.nis2_category.category : "Fuori ambito";
-                var catColor = cat === "Essenziale" ? "#fc8181" : cat === "Importante" ? "#f6e05e" : "#63b3ed";
 
                 h += "<div class='card'><h3>📊 NIS2 Readiness — Dettaglio punteggio</h3>";
-                h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:14px;'>Categoria: <strong style='color:" + catColor + ";'>" + cat + "</strong></p>";
+                var catNote = cat === "Fornitore NIS2"
+                    ? "Soggetto fuori ambito NIS2 come entità diretta, ma fornitore di soggetti Essenziali/Importanti (Art. 21.2.d)"
+                    : "";
+                h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:" + (catNote ? "4px" : "14px") + ";'>Categoria: <strong style='color:" + catColor + ";'>" + cat + "</strong></p>";
+                if (catNote) h += "<p style='font-size:11px;color:#9f7aea;margin-bottom:12px;font-style:italic;'>🔗 " + catNote + "</p>";
 
                 function readBar(score, max, label, color) {
                     var pct = max > 0 ? Math.round(score/max*100) : 0;
@@ -1271,11 +1275,12 @@ def scan():
     data = request.json
     company_data = lookup_company(data.get('vat_number', ''))
     if company_data is None:
-        company_data = {"name": "Partita IVA non trovata", "ateco": data.get('ateco','N/D'), "employees": data.get('employees','N/D'), "revenue": data.get('revenue',''), "address": "N/D", "status": "error"}
+        company_data = {"name": "Partita IVA non trovata", "ateco": data.get('ateco','N/D'), "employees": data.get('employees','N/D'), "revenue": data.get('revenue',''), "is_supplier": bool(data.get('is_supplier', False)), "address": "N/D", "status": "error"}
     else:
-        company_data["ateco"]    = data.get('ateco', 'N/D')
-        company_data["employees"] = data.get('employees', 'N/D')
-        company_data["revenue"]   = data.get('revenue', '')
+        company_data["ateco"]       = data.get('ateco', 'N/D')
+        company_data["employees"]   = data.get('employees', 'N/D')
+        company_data["revenue"]     = data.get('revenue', '')
+        company_data["is_supplier"] = bool(data.get('is_supplier', False))
     questions = data.get('questions', {})
     company_data["ciso"] = "Interno" if questions.get('q2') == 'si_interno' else "Consulente esterno" if questions.get('q2') == 'si_esterno' else "Assente"
     company_data["email"] = data.get('email','')

@@ -196,11 +196,12 @@ def _parse_revenue(revenue_str):
     return is_large, is_medium
 
 
-def get_nis2_category(ateco_code, employees_str, revenue_str=''):
+def get_nis2_category(ateco_code, employees_str, revenue_str='', is_supplier=False):
     """
     Classifica l'organizzazione secondo D.Lgs. 138/2024:
-    Essenziale / Importante / Fuori ambito / Non determinabile.
+    Essenziale / Importante / Fornitore NIS2 / Fuori ambito / Non determinabile.
     Richiede: ATECO + dipendenti + fascia fatturato.
+    is_supplier=True: soggetto fuori ambito che fornisce servizi a entità NIS2.
     """
     if not ateco_code or str(ateco_code).strip().lower() in ('', 'n/d', 'altro', 'none'):
         return {
@@ -238,6 +239,10 @@ def get_nis2_category(ateco_code, employees_str, revenue_str=''):
                     "description": "Media organizzazione in settore Allegato I NIS2",
                     "annex": "I"}
         else:
+            if is_supplier:
+                return {"category": "Fornitore NIS2",
+                        "description": "Piccola impresa in settore NIS2 ma fornitore di soggetti Essenziali/Importanti — Art. 21.2.d",
+                        "annex": "I_small"}
             return {"category": "Fuori ambito",
                     "description": "Piccola/micro impresa in settore NIS2 — obblighi non applicabili (salvo eccezioni)",
                     "annex": "I_small"}
@@ -247,10 +252,18 @@ def get_nis2_category(ateco_code, employees_str, revenue_str=''):
                     "description": "Organizzazione in settore Allegato II NIS2",
                     "annex": "II"}
         else:
+            if is_supplier:
+                return {"category": "Fornitore NIS2",
+                        "description": "Piccola impresa in settore secondario NIS2 e fornitore di soggetti NIS2 — Art. 21.2.d",
+                        "annex": "II_small"}
             return {"category": "Fuori ambito",
                     "description": "Piccola/micro impresa — NIS2 non applicabile",
                     "annex": "II_small"}
     else:
+        if is_supplier:
+            return {"category": "Fornitore NIS2",
+                    "description": "Settore non direttamente NIS2 ma fornitore di soggetti Essenziali/Importanti — obblighi contrattuali Art. 21.2.d",
+                    "annex": None}
         return {"category": "Fuori ambito",
                 "description": "Settore non coperto dalla Direttiva NIS2",
                 "annex": None}
@@ -457,7 +470,8 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
     nis2_info = get_nis2_category(
         company_data.get("ateco", ""),
         company_data.get("employees", ""),
-        company_data.get("revenue", "")
+        company_data.get("revenue", ""),
+        is_supplier=bool(company_data.get("is_supplier", False))
     )
 
     # Seleziona le domande appropriate per la categoria rilevata
@@ -517,14 +531,21 @@ def calculate_nis2_score(company_data, scan_results, questions=None):
     total_score = technical_score + questionnaire_score + ciso_score + email_score
     total_score = min(total_score, 100)
 
-    if nis2_info["category"] == "Essenziale" and total_score < 50:
+    _cat = nis2_info["category"]
+    if _cat == "Essenziale" and total_score < 50:
         overall_risk, risk_color = "CRITICO", "error"
-    elif nis2_info["category"] == "Essenziale" and total_score < 75:
+    elif _cat == "Essenziale" and total_score < 75:
         overall_risk, risk_color = "ALTO", "warning"
-    elif nis2_info["category"] == "Importante" and total_score < 40:
+    elif _cat == "Importante" and total_score < 40:
         overall_risk, risk_color = "CRITICO", "error"
-    elif nis2_info["category"] == "Importante" and total_score < 60:
+    elif _cat == "Importante" and total_score < 60:
         overall_risk, risk_color = "ALTO", "warning"
+    elif _cat == "Fornitore NIS2" and total_score < 40:
+        overall_risk, risk_color = "CRITICO", "error"   # 3 domande critiche senza risposta
+    elif _cat == "Fornitore NIS2" and total_score < 65:
+        overall_risk, risk_color = "ALTO", "warning"    # gap contrattuali da colmare
+    elif _cat == "Fornitore NIS2" and total_score < 80:
+        overall_risk, risk_color = "MEDIO", "warning"
     elif total_score >= 80:
         overall_risk, risk_color = "BASSO", "ok"
     elif total_score >= 50:
