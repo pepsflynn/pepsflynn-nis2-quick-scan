@@ -6,6 +6,10 @@ import random
 import string
 import dns.resolver
 import os
+import time
+import requests
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = 'nis2-web-version-2026'
@@ -257,24 +261,42 @@ HTML_TEMPLATE = r"""
                 WAF • CMS e tecnologie • File sensibili esposti • DMARC • SPF • DNSSEC • Subdomain takeover
             </div>
             
+            <!-- OTP PRIMA -->
             <div class="verification-section">
-                <div class="section-title">📧 Verifica DNS Email</div>
+                <div class="section-title">🔐 Passo 1 — Verifica Identità (OTP)</div>
+                <p style="font-size:12px;color:#a0aec0;margin-bottom:10px;">
+                    Inserisci la tua email aziendale e invia il codice OTP per confermare che il dominio ti appartiene.
+                    Scade in 10 minuti.<span id="otp-countdown" style="display:none;font-size:12px;color:#f6ad55;"></span>
+                </p>
                 <label>Email aziendale</label>
                 <input type="email" id="email" placeholder="es. sicurezza@azienda.it" oninput="checkEmailDomain()">
                 <div id="email-domain-warning" style="display:none;font-size:12px;padding:7px 10px;border-radius:6px;margin:4px 0 6px;"></div>
-                <button class="btn-small" onclick="verifyDNS()" id="btn-dns">Verifica DNS</button>
+                <button class="btn-small" onclick="sendOTP()" id="btn-otp" style="margin-top:8px;">📧 Invia codice OTP</button>
+                <div id="otp-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;"></div>
+                <div id="otp-verify-section" style="display:none;margin-top:12px;">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <input type="text" id="otp-code" placeholder="Codice a 6 cifre"
+                               style="flex:1;min-width:160px;letter-spacing:6px;font-size:18px;text-align:center;"
+                               maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')">
+                        <button class="btn-small" onclick="verifyOTP()" id="btn-verify-otp">✅ Verifica codice</button>
+                    </div>
+                    <div id="otp-verify-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;"></div>
+                    <p style="font-size:11px;color:#718096;margin-top:8px;">
+                        Non hai ricevuto l\'email? Controlla lo spam oppure
+                        <a href="#" onclick="sendOTP();return false;" style="color:#63b3ed;">invia di nuovo</a>.
+                    </p>
+                </div>
+            </div>
+
+            <!-- DNS DOPO — visibile solo dopo OTP verificato -->
+            <div class="verification-section" id="dns-section" style="display:none;opacity:0;transition:opacity .4s;">
+                <div class="section-title">📧 Passo 2 — Verifica DNS Email</div>
+                <p style="font-size:12px;color:#a0aec0;margin-bottom:10px;">
+                    Identità confermata ✅ — Ora analizziamo i record DNS del tuo dominio email.
+                </p>
+                <button class="btn-small" onclick="verifyDNS()" id="btn-dns">🔍 Avvia verifica DNS</button>
                 <div id="dns-result"></div>
             </div>
-            <div class="verification-section">
-                <div class="section-title">🔐 Verifica Identità (OTP)</div>
-                <button class="btn-small btn-outline" onclick="sendOTP()" id="btn-otp-send">Genera Codice OTP</button>
-                <div id="otp-section" class="hidden" style="margin-top:15px;">
-                    <input type="text" id="otp-code" class="otp-input" placeholder="Codice">
-                    <button class="btn-small" onclick="verifyOTP()">Conferma</button>
-                </div>
-                <div id="otp-result"></div>
-            </div>
-            
             <div style="background:rgba(43,108,176,0.1);border:1px solid rgba(43,108,176,0.3);border-radius:8px;padding:12px;margin-top:15px;">
                 <p style="font-size:13px;color:#63b3ed;"><strong>🏢 Rete interna — solo versione portable</strong></p>
                 <p style="font-size:12px;color:#a0aec0;">RDP, SMB, firewall, antivirus, BitLocker, porte interne e crittografia endpoint richiedono la <strong>versione portable</strong> da eseguire sulla rete aziendale.</p>
@@ -703,14 +725,203 @@ HTML_TEMPLATE = r"""
 
         function sendOTP() {
             var email = document.getElementById("email").value.trim();
+            if (!email) { alert("Inserisci l\'indirizzo email aziendale"); return; }
+            checkEmailDomain();
+            var btn = document.getElementById("btn-otp");
+            var status = document.getElementById("otp-status");
+            btn.disabled = true; btn.textContent = "Invio in corso...";
+            if (status) { status.style.display='block'; status.style.background='rgba(255,255,255,0.04)'; status.style.border='1px solid rgba(255,255,255,0.1)'; status.style.color='#a0aec0'; status.innerHTML='⏳ Invio codice OTP a <strong>' + email + '</strong>...'; }
+            fetch("/api/send-otp", {
+                method:"POST", headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({email: email})
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(d) {
+                btn.disabled = false; btn.textContent = "Invia codice";
+                if (d.success) {
+                    var isDevMode = !!d.dev_code;
+                    if (status) {
+                        status.style.background = isDevMode ? 'rgba(246,173,85,0.08)' : 'rgba(56,161,105,0.08)';
+                        status.style.border = isDevMode ? '1px solid rgba(246,173,85,0.3)' : '1px solid rgba(56,161,105,0.3)';
+                        status.style.color = isDevMode ? '#f6ad55' : '#68d391';
+                        status.innerHTML = isDevMode
+                            ? '⚠️ <strong>Modalità sviluppo</strong> — SMTP non configurato. ' + d.message
+                            : '✅ ' + d.message + ' Il codice scade in <strong>10 minuti</strong>.';
+                        if (isDevMode) {
+                            // Auto-compila il campo codice in dev mode
+                            var otpField = document.getElementById("otp-code");
+                            if (otpField) otpField.value = d.dev_code;
+                        }
+                    }
+                    document.getElementById("otp-verify-section").style.display = "block";
+                    // Avvia countdown 10 minuti
+                    startOtpCountdown(600);
+                } else {
+                    if (status) {
+                        status.style.background='rgba(252,129,129,0.08)';
+                        status.style.border='1px solid rgba(252,129,129,0.3)';
+                        status.style.color='#fc8181';
+                        status.innerHTML = '❌ ' + (d.message || "Errore nell\'invio");
+                    }
+                }
+            })
+            .catch(function(){ btn.disabled=false; btn.textContent="Invia codice"; alert("Errore di rete"); });
+        }
+
+        var _otpTimer = null;
+        function startOtpCountdown(seconds) {
+            if (_otpTimer) clearInterval(_otpTimer);
+            var el = document.getElementById("otp-countdown");
+            if (!el) return;
+            el.style.display = 'inline';
+            function tick() {
+                if (seconds <= 0) {
+                    clearInterval(_otpTimer);
+                    el.innerHTML = ' — <span style="color:#fc8181;">Codice scaduto</span>';
+                    return;
+                }
+                var m = Math.floor(seconds / 60), s = seconds % 60;
+                el.innerHTML = ' — scade in <strong>' + m + ':' + (s < 10 ? '0' : '') + s + '</strong>';
+                seconds--;
+            }
+            tick();
+            _otpTimer = setInterval(tick, 1000);
+        }
+
+        function verifyOTP() {
+            var email = document.getElementById("email").value.trim();
+            var code  = document.getElementById("otp-code").value.trim();
+            if (!code) { alert("Inserisci il codice ricevuto"); return; }
+            var btn = document.getElementById("btn-verify-otp");
+            var status = document.getElementById("otp-verify-status");
+            btn.disabled = true; btn.textContent = "Verifica...";
+            fetch("/api/verify-otp", {
+                method:"POST", headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({email: email, code: code})
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(d) {
+                btn.disabled = false; btn.textContent = "Verifica";
+                if (status) { status.style.display='block'; }
+                if (d.valid) {
+                    if (_otpTimer) clearInterval(_otpTimer);
+                    if (status) {
+                        status.style.background='rgba(56,161,105,0.08)';
+                        status.style.border='1px solid rgba(56,161,105,0.3)';
+                        status.style.color='#68d391';
+                        status.innerHTML='✅ <strong>Email verificata.</strong> ' + (d.message || '');
+                    }
+                    otpVerified = true; checkBoth();
+                    // Mostra la sezione DNS solo dopo OTP verificato
+                    var dnsSec = document.getElementById("dns-section");
+                    if (dnsSec) {
+                        dnsSec.style.display = "block";
+                        setTimeout(function(){ dnsSec.style.opacity = "1"; }, 50);
+                        dnsSec.scrollIntoView({ behavior:"smooth", block:"start" });
+                    }
+                    document.getElementById("goto-step3").disabled = !(dnsVerified && otpVerified);
+                } else {
+                    if (status) {
+                        status.style.background='rgba(252,129,129,0.08)';
+                        status.style.border='1px solid rgba(252,129,129,0.3)';
+                        status.style.color='#fc8181';
+                        status.innerHTML='❌ ' + (d.message || "Codice non corretto");
+                    }
+                }
+            })
+            .catch(function(){ btn.disabled=false; btn.textContent="Verifica"; });
+        }
+
+        function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
+
+        function checkEmailDomain() {
+            var email = document.getElementById("email").value.trim();
+            var siteDomain = document.getElementById("domain").value.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            var warn = document.getElementById("email-domain-warning");
+            if (!email || !siteDomain || email.indexOf('@') < 0) { warn.style.display = 'none'; return; }
+            var emailDomain = email.split('@')[1] || '';
+            // considera match anche se il dominio email è un sottodominio del dominio sito o viceversa
+            var match = emailDomain === siteDomain ||
+                        emailDomain.endsWith('.' + siteDomain) ||
+                        siteDomain.endsWith('.' + emailDomain);
+            if (!match) {
+                warn.style.display = 'block';
+                warn.style.background = 'rgba(246,224,94,0.1)';
+                warn.style.border = '1px solid rgba(246,224,94,0.4)';
+                warn.style.color = '#f6e05e';
+                warn.innerHTML = '⚠️ Il dominio email (<strong>' + emailDomain + '</strong>) è diverso dal dominio aziendale (<strong>' + siteDomain + '</strong>). I risultati DNS si riferiranno al dominio email.';
+            } else {
+                warn.style.display = 'block';
+                warn.style.background = 'rgba(56,161,105,0.1)';
+                warn.style.border = '1px solid rgba(56,161,105,0.3)';
+                warn.style.color = '#68d391';
+                warn.innerHTML = '✅ Dominio email coerente con il dominio aziendale.';
+            }
+        }
+
+        function verifyDNS() {
+            var email = document.getElementById("email").value.trim();
+            if (!email) { alert("Inserisci un indirizzo email"); return; }
+            checkEmailDomain();
+            var btn = document.getElementById("btn-dns");
+            btn.disabled = true; btn.textContent = "Analisi DNS...";
+            fetch("/api/verify-dns", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email}) })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    var r = d.results;
+                    var levelColor = r.level === "CONFORME" ? "#68d391" : r.level === "PARZIALE" ? "#f6e05e" : "#fc8181";
+                    var h = "<div style='margin:10px 0 8px;padding:8px 12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:13px;'>";
+                    h += "Dominio analizzato: <strong>" + r.domain + "</strong> &nbsp;|&nbsp; ";
+                    h += "Livello: <strong style='color:" + levelColor + ";'>" + r.level + "</strong>";
+                    h += " &nbsp;(" + r.score + " pt)</div>";
+                    h += "<table style='margin-top:4px;font-size:13px;'>";
+
+                    // MX
+                    h += "<tr><td><strong>MX</strong> &mdash; server di posta</td>";
+                    h += "<td class='" + (r.mx_valid?"ok":"error") + "'>" + (r.mx_valid ? "✅ OK (" + r.mx_count + " record)" : "❌ Assente") + "</td></tr>";
+
+                    // SPF
+                    var spfClass = !r.spf_valid ? "error" : r.spf_strict ? "ok" : "warning";
+                    var spfLabel = !r.spf_valid ? "❌ Assente" : (r.spf_strict ? "✅ OK (strict -all)" : "⚠️ Presente (~all, permissivo)");
+                    h += "<tr><td><strong>SPF</strong> &mdash; mittenti autorizzati</td><td class='" + spfClass + "'>" + spfLabel + "</td></tr>";
+
+                    // DMARC
+                    var dmarcClass = !r.dmarc_valid ? "error" : r.dmarc_policy === "reject" ? "ok" : r.dmarc_policy === "quarantine" ? "warning" : "warning";
+                    var dmarcLabel = !r.dmarc_valid ? "❌ Assente" :
+                        "✅ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : " (no reporting)");
+                    if (r.dmarc_policy === "reject") dmarcLabel = "✅ " + dmarcLabel.replace("✅ ","");
+                    else if (r.dmarc_valid && r.dmarc_policy !== "reject") dmarcLabel = "⚠️ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : "");
+                    h += "<tr><td><strong>DMARC</strong> &mdash; anti-spoofing</td><td class='" + dmarcClass + "'>" + dmarcLabel + "</td></tr>";
+
+                    // DKIM
+                    var dkimLabel = r.dkim_verified
+                        ? "✅ OK (selettore: <em>" + r.dkim_selector + "</em>)"
+                        : "❌ Non rilevato (selettori comuni verificati)";
+                    h += "<tr><td><strong>DKIM</strong> &mdash; firma digitale</td><td class='" + (r.dkim_verified?"ok":"error") + "'>" + dkimLabel + "</td></tr>";
+
+                    // MTA-STS
+                    h += "<tr><td><strong>MTA-STS</strong> &mdash; cifratura SMTP</td>";
+                    h += "<td class='" + (r.mta_sts?"ok":"warning") + "'>" + (r.mta_sts ? "✅ Abilitato" : "⚠️ Non configurato") + "</td></tr>";
+
+                    h += "</table>";
+                    document.getElementById("dns-result").innerHTML = h;
+                    dnsVerified = true; checkBoth();
+                }
+                btn.disabled = false; btn.textContent = "Verifica DNS";
+            });
+        }
+
+        function sendOTP() {
+            var email = document.getElementById("email").value.trim();
             if (!email) { alert("Inserisci l'email"); return; }
-            var btn = document.getElementById("btn-otp-send");
+            var btn = document.getElementById("btn-otp");
             btn.disabled = true; btn.textContent = "Invio...";
             fetch("/api/send-otp", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email}) })
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 if (d.success) {
-                    document.getElementById("otp-section").classList.remove("hidden");
+                    // otp-section handled by otp-verify-section;
                     document.getElementById("otp-result").innerHTML = "<p class='ok'>Codice: <strong>" + d.code + "</strong></p>";
                 }
                 btn.disabled = false; btn.textContent = "Genera Codice";
@@ -1254,21 +1465,157 @@ def verify_dns():
     )
     return jsonify({"success": True, "results": results})
 
+# ─────────────────────────────────────────────
+# Helper: invio OTP via API HTTP (Brevo o SendGrid)
+# SMTP è bloccato su Render free tier — usare sempre API HTTPS
+# ─────────────────────────────────────────────
+def _build_otp_html(code):
+    return f"""<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;
+                padding:32px 24px;background:#0d1b2a;border-radius:12px;color:#e2e8f0;">
+      <h2 style="color:#63b3ed;margin-top:0;">NIS2 Compliance Tool — Ichnobyte</h2>
+      <p style="color:#a0aec0;font-size:14px;">Il tuo codice di verifica identità è:</p>
+      <div style="font-size:40px;font-weight:700;letter-spacing:12px;color:#68d391;
+                  background:rgba(104,211,145,0.1);border-radius:8px;padding:20px;
+                  text-align:center;margin:20px 0;">{code}</div>
+      <p style="color:#718096;font-size:12px;">
+        Scade tra <strong>10 minuti</strong>.<br>
+        Se non hai richiesto questo codice ignora questa email.
+      </p>
+    </div>"""
+
+
+def _send_email_api(to_email, code):
+    """
+    Invia OTP tramite API HTTP — compatibile con Render free tier.
+
+    Configurare UNA di queste variabili d'ambiente su Render:
+      BREVO_API_KEY     chiave API Brevo (brevo.com — gratuito 300 email/giorno)
+      SENDGRID_API_KEY  chiave API SendGrid (gratuito 100 email/giorno)
+
+    Mittente opzionale:
+      EMAIL_FROM_ADDRESS  es. noreply@ichnobyte.it  (default: mittente Brevo/SendGrid)
+      EMAIL_FROM_NAME     es. NIS2 Tool Ichnobyte
+    """
+    from_email = os.environ.get('EMAIL_FROM_ADDRESS', '')
+    from_name  = os.environ.get('EMAIL_FROM_NAME', 'NIS2 Compliance Tool')
+    html_body  = _build_otp_html(code)
+    subject    = 'Codice di verifica — NIS2 Compliance Tool'
+
+    # ── Brevo (ex Sendinblue) ──────────────────────────────────
+    brevo_key = os.environ.get('BREVO_API_KEY', '')
+    if brevo_key:
+        sender = {'name': from_name, 'email': from_email} if from_email else {'name': from_name, 'email': 'no-reply@ichnobyte.it'}
+        payload = {
+            'sender':      sender,
+            'to':          [{'email': to_email}],
+            'subject':     subject,
+            'htmlContent': html_body,
+        }
+        r = requests.post(
+            'https://api.brevo.com/v3/smtp/email',
+            headers={'api-key': brevo_key, 'Content-Type': 'application/json'},
+            json=payload, timeout=12
+        )
+        if r.status_code in (200, 201):
+            return
+        raise Exception(f"Brevo API error {r.status_code}: {r.text[:200]}")
+
+    # ── SendGrid ───────────────────────────────────────────────
+    sg_key = os.environ.get('SENDGRID_API_KEY', '')
+    if sg_key:
+        if not from_email:
+            raise Exception("SendGrid richiede EMAIL_FROM_ADDRESS — impostare la variabile d'ambiente")
+        payload = {
+            'personalizations': [{'to': [{'email': to_email}]}],
+            'from':    {'email': from_email, 'name': from_name},
+            'subject': subject,
+            'content': [{'type': 'text/html', 'value': html_body}],
+        }
+        r = requests.post(
+            'https://api.sendgrid.com/v3/mail/send',
+            headers={'Authorization': f'Bearer {sg_key}', 'Content-Type': 'application/json'},
+            json=payload, timeout=12
+        )
+        if r.status_code == 202:
+            return
+        raise Exception(f"SendGrid API error {r.status_code}: {r.text[:200]}")
+
+    raise EnvironmentError("Nessun servizio email configurato. Impostare BREVO_API_KEY o SENDGRID_API_KEY su Render.")
+
+
 @app.route('/api/send-otp', methods=['POST'])
 def send_otp():
-    email = request.json.get('email', '')
-    code = ''.join(random.choices(string.digits, k=6))
-    verification_codes[email] = code
-    return jsonify({"success": True, "code": code})
+    email = request.json.get('email', '').strip().lower()
+    if not email or '@' not in email:
+        return jsonify({"success": False, "message": "Indirizzo email non valido"})
+
+    # Rate limiting: max 3 richieste per email ogni 15 minuti
+    existing = verification_codes.get(email, {})
+    if isinstance(existing, dict):
+        req_count = existing.get('req_count', 0)
+        req_time  = existing.get('req_time', 0)
+        if req_count >= 3 and time.time() - req_time < 900:
+            return jsonify({"success": False,
+                            "message": "Troppi tentativi. Attendi 15 minuti."})
+
+    code    = ''.join(random.choices(string.digits, k=6))
+    expiry  = time.time() + 600   # 10 minuti
+    req_cnt = (existing.get('req_count', 0) + 1) if isinstance(existing, dict) else 1
+    verification_codes[email] = {
+        "code":      code,
+        "expiry":    expiry,
+        "attempts":  0,
+        "req_count": req_cnt,
+        "req_time":  time.time()
+    }
+
+    # Tentativo di invio SMTP
+    api_configured = bool(
+        os.environ.get('BREVO_API_KEY') or os.environ.get('SENDGRID_API_KEY')
+    )
+    if api_configured:
+        try:
+            _send_email_api(email, code)
+            return jsonify({"success": True,
+                            "message": f"Codice inviato a {email}. Controlla la casella (e lo spam)."})
+        except Exception as e:
+            print(f"[OTP] Errore API email: {e}")
+            return jsonify({"success": False,
+                            "message": f"Errore invio email: {str(e)[:120]}"})
+    else:
+        # Modalità sviluppo — nessuna API configurata
+        print(f"[DEV] OTP per {email}: {code}")
+        return jsonify({"success": True,
+                        "message": f"[DEV — configurare BREVO_API_KEY su Render] Codice: {code}",
+                        "dev_code": code})
+
 
 @app.route('/api/verify-otp', methods=['POST'])
 def verify_otp():
-    email = request.json.get('email', '')
-    code = request.json.get('code', '')
-    expected = verification_codes.get(email, '')
-    verified = (expected == code)
-    if verified: del verification_codes[email]
-    return jsonify({"verified": verified})
+    email = request.json.get('email', '').strip().lower()
+    code  = request.json.get('code', '').strip()
+
+    stored = verification_codes.get(email)
+    if not isinstance(stored, dict):
+        return jsonify({"valid": False, "message": "Nessun codice attivo per questa email. Richiedi un nuovo codice."})
+
+    if time.time() > stored.get("expiry", 0):
+        verification_codes.pop(email, None)
+        return jsonify({"valid": False, "message": "Codice scaduto (10 min). Richiedi un nuovo codice."})
+
+    stored["attempts"] = stored.get("attempts", 0) + 1
+    if stored["attempts"] > 5:
+        verification_codes.pop(email, None)
+        return jsonify({"valid": False, "message": "Troppi tentativi errati. Richiedi un nuovo codice."})
+
+    if stored["code"] == code:
+        verification_codes.pop(email, None)   # invalida dopo l'uso
+        return jsonify({"valid": True, "message": "Email verificata correttamente."})
+
+    remaining = 5 - stored["attempts"]
+    return jsonify({"valid": False,
+                    "message": f"Codice non corretto. Tentativi rimanenti: {remaining}"})
+
 
 @app.route('/api/scan', methods=['POST'])
 def scan():
