@@ -233,6 +233,16 @@ HTML_TEMPLATE = r"""
                 <option value="grande">Oltre 50 M€ (grande impresa)</option>
             </select>
 
+            <label style="margin-top:6px;display:block;">Fornisci servizi a organizzazioni nei settori energia, sanità, PA, finanza, TLC o infrastrutture critiche?</label>
+            <p style="font-size:12px;color:#718096;margin:-4px 0 8px;">Es: sei un fornitore IT, consulente, system integrator o outsourcer di un ente pubblico, ospedale, banca o utility?</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 14px;font-size:13px;color:#cbd5e0;">
+                    <input type="radio" name="is_supplier" value="si" onchange="computeNIS2Category()" style="accent-color:#63b3ed;"> Sì, sono fornitore di soggetti NIS2</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 14px;font-size:13px;color:#cbd5e0;">
+                    <input type="radio" name="is_supplier" value="forse" onchange="computeNIS2Category()" style="accent-color:#63b3ed;"> Potrei esserlo, non sono sicuro</label>
+                <label style="display:flex;align-items:center;gap=6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 14px;font-size:13px;color:#cbd5e0;">
+                    <input type="radio" name="is_supplier" value="no" onchange="computeNIS2Category()" style="accent-color:#63b3ed;"> No</label>
+            </div>
             <div id="nis2-badge" style="display:none; border-radius:8px; padding:12px 14px; margin:10px 0 14px;"></div>
             <button onclick="goToStep2()">Avanti</button>
         </div>
@@ -459,8 +469,25 @@ HTML_TEMPLATE = r"""
             badge.style.display='block';
             badge.style.background=st.bg; badge.style.border='1px solid '+st.border;
             badge.innerHTML = st.icon+' Categoria NIS2 rilevata: <strong style="color:'+st.color+';">'+cat+'</strong> &mdash; <span style="color:#a0aec0;font-size:12px;">'+desc+'</span>';
+            // Check supplier override
+            var supplierEl = document.querySelector('input[name="is_supplier"]:checked');
+            var supplierVal = supplierEl ? supplierEl.value : 'no';
+            window._isSupplier = (supplierVal === 'si' || supplierVal === 'forse');
+
+            if (window._isSupplier && cat === 'Fuori ambito') {
+                cat = 'Fornitore NIS2';
+                var supplierNote = supplierVal === 'forse'
+                    ? 'Possibile fornitore di soggetti NIS2 — verifica se i tuoi clienti rientrano nell\'ambito'
+                    : 'Fornitore di soggetti NIS2 — obblighi contrattuali derivati dall\'Art. 21.2.d';
+                st = { bg:'rgba(156,135,226,0.10)', border:'rgba(156,135,226,0.45)', color:'#b794f4', icon:'🔗' };
+                badge.style.display='block';
+                badge.style.background=st.bg; badge.style.border='1px solid '+st.border;
+                badge.innerHTML = st.icon+' Categoria NIS2 rilevata: <strong style="color:'+st.color+';">'+cat+'</strong> &mdash; <span style="color:#a0aec0;font-size:12px;">'+supplierNote+'</span>';
+                badge.innerHTML += '<br><span style="color:#9f7aea;font-size:11px;display:block;margin-top:5px;">📋 Il questionario sarà calibrato sui requisiti che i tuoi clienti NIS2 ti chiederanno di rispettare</span>';
+            }
+
             window._nis2Category = cat;
-            if (!rev) badge.innerHTML += '<br><span style="color:#718096;font-size:11px;margin-top:4px;display:block;">⚠️ Aggiungere la fascia fatturato per una classificazione più precisa</span>';
+            if (!rev && cat !== 'Fornitore NIS2') badge.innerHTML += '<br><span style="color:#718096;font-size:11px;margin-top:4px;display:block;">⚠️ Aggiungere la fascia fatturato per una classificazione più precisa</span>';
         }
 
         // ── Questionnaire catalog ─────────────────────────────────
@@ -503,6 +530,30 @@ HTML_TEMPLATE = r"""
                 { id:"q7", label:"Formazione cybersicurezza per dipendenti e collaboratori",        art:"Art. 20 D.Lgs. 138/2024",  badge:"OBBLIGATORIO", bc:"#f6ad55",
                   opts:[{v:"si",l:"✅ Sì, programma attivo"},{v:"saltuaria",l:"⚠️ Occasionale"},{v:"no",l:"❌ No"}] },
             ],
+            "Fornitore NIS2": [
+                { id:"fq1", label:"Accessi remoti ai sistemi del cliente: nominativi, MFA obbligatoria, session recording", art:"Art. 21.2.d — Supply Chain", badge:"REQUISITO CRITICO", bc:"#fc8181",
+                  note:"Il cliente NIS2 verificherà questo come primo requisito contrattuale",
+                  opts:[{v:"si",l:"✅ Sì, MFA + accessi nominativi tracciati con log"},{v:"parziale",l:"⚠️ MFA presente ma accessi non tracciati/nominativi"},{v:"no",l:"❌ No"}] },
+                { id:"fq2", label:"PAM: account privilegiati separati, accessi temporanei approvati e tracciati", art:"Art. 21.2.d — Supply Chain", badge:"REQUISITO CRITICO", bc:"#fc8181",
+                  note:"Account condivisi o privilegiati non revocati = responsabilità diretta in caso di incidente",
+                  opts:[{v:"si",l:"✅ Sì, PAM implementato con least privilege"},{v:"parziale",l:"⚠️ Separazione account ma senza PAM formalizzato"},{v:"no",l:"❌ No, account condivisi o non segregati"}] },
+                { id:"fq3", label:"Incident Response Plan con notifica al cliente entro 24-48h dall'evento", art:"Art. 21.2.d + Art. 24", badge:"REQUISITO CRITICO", bc:"#fc8181",
+                  note:"Il cliente NIS2 deve notificare ACN entro 24h — deve ricevere la tua segnalazione prima",
+                  opts:[{v:"si",l:"✅ Sì, IRP con SLA di notifica definiti e testati"},{v:"parziale",l:"⚠️ Processo informale, nessun SLA formalizzato"},{v:"no",l:"❌ No IRP"}] },
+                { id:"fq4", label:"BCP/DRP con RTO e RPO definiti e testati per i servizi erogati", art:"Art. 21.2.d + Art. 21.2.c", badge:"REQUISITO CONTRATTUALE", bc:"#f6ad55",
+                  note:"Senza RTO/RPO documentati il cliente non può accettarti come fornitore critico",
+                  opts:[{v:"si",l:"✅ Sì, BCP/DRP con RTO/RPO testati e documentati"},{v:"parziale",l:"⚠️ BCP esistente ma senza test periodici"},{v:"no",l:"❌ No BCP/DRP"}] },
+                { id:"fq5", label:"Vulnerability assessment periodici e patch management con SLA per criticità alta/critica", art:"Art. 21.2.d + Art. 21.2.e", badge:"REQUISITO CONTRATTUALE", bc:"#f6ad55",
+                  note:"Vulnerabilità sul tuo stack = superficie di attacco verso i sistemi del cliente NIS2",
+                  opts:[{v:"si",l:"✅ Sì, VA periodici + SLA patch critiche documentati"},{v:"parziale",l:"⚠️ Patch applicate ma senza VA o SLA formalizzati"},{v:"no",l:"❌ No processo strutturato"}] },
+                { id:"fq6", label:"Clausole contrattuali NIS2 nei contratti con clienti: SLA security, audit rights, notifica incidente", art:"Art. 21.2.d", badge:"REQUISITO CONTRATTUALE", bc:"#f6ad55",
+                  note:"I clienti NIS2 sono obbligati per legge a inserire queste clausole — senza accordo rischiate entrambi",
+                  opts:[{v:"si",l:"✅ Sì, clausole NIS2 presenti e aggiornate"},{v:"parziale",l:"⚠️ Clausole generiche, non specifiche NIS2"},{v:"no",l:"❌ No clausole security nei contratti"}] },
+                { id:"fq7", label:"Offboarding: accessi ai sistemi del cliente revocati entro 24h dalla cessazione del rapporto", art:"Art. 21.2.d", badge:"BUONA PRATICA", bc:"#f6e05e",
+                  opts:[{v:"si",l:"✅ Sì, processo automatizzato o <24h garantito"},{v:"parziale",l:"⚠️ Processo manuale, tempi variabili"},{v:"no",l:"❌ No processo formalizzato"}] },
+                { id:"fq8", label:"Formazione cybersicurezza per il personale con accesso ai sistemi o dati del cliente", art:"Art. 21.2.d", badge:"BUONA PRATICA", bc:"#f6e05e",
+                  opts:[{v:"si",l:"✅ Sì, formazione periodica documentata per ruolo"},{v:"saltuaria",l:"⚠️ Occasionale o senza tracciamento"},{v:"no",l:"❌ No"}] },
+            ],
             "Fuori ambito": [
                 { id:"q1", label:"Backup regolari, verificati e conservati off-site",               art:"Best practice ENISA",       badge:"CONSIGLIATO", bc:"#63b3ed",
                   opts:[{v:"si",l:"✅ Sì, regolari e verificati"},{v:"parziale",l:"⚠️ Presenti ma non verificati"},{v:"no",l:"❌ No"}] },
@@ -521,9 +572,10 @@ HTML_TEMPLATE = r"""
             var catBadge  = document.getElementById('q-category-badge');
 
             var catStyles = {
-                'Essenziale':   {bg:'rgba(252,129,129,0.1)', border:'rgba(252,129,129,0.4)', color:'#fc8181', text:'Soggetto Essenziale NIS2 — '+qs.length+' domande obbligatorie D.Lgs. 138/2024'},
-                'Importante':   {bg:'rgba(246,224,94,0.08)', border:'rgba(246,224,94,0.4)',  color:'#f6e05e', text:'Soggetto Importante NIS2 — '+qs.length+' domande obbligatorie D.Lgs. 138/2024'},
-                'Fuori ambito': {bg:'rgba(99,179,237,0.08)', border:'rgba(99,179,237,0.3)',  color:'#63b3ed', text:'Fuori ambito NIS2 — '+qs.length+' domande di autovalutazione volontaria'},
+                'Essenziale':      {bg:'rgba(252,129,129,0.1)', border:'rgba(252,129,129,0.4)', color:'#fc8181', text:'Soggetto Essenziale NIS2 — '+qs.length+' domande obbligatorie D.Lgs. 138/2024'},
+                'Importante':      {bg:'rgba(246,224,94,0.08)', border:'rgba(246,224,94,0.4)',  color:'#f6e05e', text:'Soggetto Importante NIS2 — '+qs.length+' domande obbligatorie D.Lgs. 138/2024'},
+                'Fornitore NIS2':  {bg:'rgba(156,135,226,0.10)', border:'rgba(156,135,226,0.4)', color:'#b794f4', text:'Fornitore di soggetti NIS2 — '+qs.length+' requisiti che il tuo cliente verificherà'},
+                'Fuori ambito':    {bg:'rgba(99,179,237,0.08)', border:'rgba(99,179,237,0.3)',  color:'#63b3ed', text:'Fuori ambito NIS2 — '+qs.length+' domande di autovalutazione volontaria'},
             };
             var cs = catStyles[cat] || catStyles['Fuori ambito'];
             catBadge.style.display='block';
@@ -533,6 +585,7 @@ HTML_TEMPLATE = r"""
             var introMap = {
                 'Essenziale':   'Questionario calibrato per <strong>soggetti essenziali</strong>: domande allineate agli obblighi legali del D.Lgs. 138/2024.',
                 'Importante':   'Questionario calibrato per <strong>soggetti importanti</strong>: obblighi NIS2 con requisiti proporzionati alla categoria.',
+                'Fornitore NIS2': 'Questionario per <strong>fornitori di soggetti NIS2</strong>: queste sono le domande che il tuo cliente ti farà. Ogni lacuna è un rischio di perdere il contratto o essere considerato responsabile in caso di incidente.',
                 'Fuori ambito': 'La tua organizzazione non è soggetta agli obblighi NIS2. Le domande seguenti valutano la maturità di sicurezza come <strong>best practice volontarie</strong>.',
             };
             intro.innerHTML = introMap[cat] || introMap['Fuori ambito'];
@@ -545,6 +598,7 @@ HTML_TEMPLATE = r"""
                 html += '<span style="background:'+q.bc+';color:#0a1628;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;">'+q.badge+'</span>';
                 html += '<div><strong style="font-size:13px;color:#e2e8f0;">'+q.label+'</strong>';
                 html += '<span style="font-size:11px;color:#718096;margin-left:8px;">'+q.art+'</span></div></div>';
+                if (q.note) html += '<p style="font-size:11px;color:#9f7aea;margin:0 0 8px;font-style:italic;">💡 ' + q.note + '</p>';
                 html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
                 q.opts.forEach(function(o) {
                     html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:6px 12px;font-size:13px;color:#cbd5e0;">';
@@ -701,6 +755,7 @@ HTML_TEMPLATE = r"""
                     employees: document.getElementById("employees").value,
                     revenue: revenue,
                     nis2_category: window._nis2Category || "",
+                    is_supplier: window._isSupplier || false,
                     email: document.getElementById("email").value.trim(),
                     dns_verified: dnsVerified, otp_verified: otpVerified,
                     questions: q
@@ -895,20 +950,43 @@ HTML_TEMPLATE = r"""
                          desc:"Gap analysis NIS2/ISO 27001, roadmap certificazione, gestione report pen-test, remediation plan" },
             };
 
-            var urgencyColor = { "LEGALE":"#fc8181", "GOVERNANCE":"#f6ad55", "TECNICO":"#63b3ed", "OPERATIVO":"#68d391", "CONFORMITÀ":"#9f7aea" };
+            // Portable modules for Fornitore NIS2
+            var PORTABLE_MODULES_SUPPLIER = {
+                "fq1": { icon:"🔐", name:"Accesso Remoto Sicuro & MFA",        urgency:"URGENTE",
+                         desc:"Verifica MFA su tutti gli accessi al cliente, accessi nominativi tracciati, log conservati, revoca automatica accessi inattivi" },
+                "fq2": { icon:"👤", name:"PAM — Privileged Access Management", urgency:"URGENTE",
+                         desc:"Separazione account admin/standard, least privilege, session recording accessi privilegiati, approvazione workflow per accessi critici" },
+                "fq3": { icon:"🚨", name:"Incident Response per Fornitori",    urgency:"URGENTE",
+                         desc:"Template IRP fornitore NIS2, workflow notifica cliente con SLA 24h, escalation automatica, registro incidenti condiviso con cliente" },
+                "fq4": { icon:"🔄", name:"BCP/DRP con RTO-RPO documentati",    urgency:"CONTRATTUALE",
+                         desc:"Template BCP specifico per servizi erogati al cliente, definizione RTO/RPO, log test DR periodici, evidenze condivisibili in audit" },
+                "fq5": { icon:"🛡️", name:"Vulnerability & Patch Management",   urgency:"CONTRATTUALE",
+                         desc:"Scan VA periodici, SLA patch critiche <72h, remediation tracking con evidenza, report condivisibile con cliente per audit supply chain" },
+                "fq6": { icon:"📄", name:"Template Clausole NIS2",             urgency:"CONTRATTUALE",
+                         desc:"Clausole security standard NIS2-compliant, SLA sicurezza, diritti di audit, obblighi notifica incidente — pronte per i contratti con clienti NIS2" },
+                "fq7": { icon:"🔑", name:"Offboarding & Gestione Accessi",     urgency:"OPERATIVO",
+                         desc:"Processo revoca accessi <24h, registro utenti attivi per cliente, audit automatico account, notifica cliente su variazioni" },
+                "fq8": { icon:"🎓", name:"Formazione per Fornitori NIS2",      urgency:"OPERATIVO",
+                         desc:"Moduli formazione specifici per tecnici con accesso a clienti NIS2, simulazioni phishing, attestati condivisibili in audit supply chain" },
+            };
+
+            var urgencyColor = { "LEGALE":"#fc8181", "GOVERNANCE":"#f6ad55", "TECNICO":"#63b3ed", "OPERATIVO":"#68d391", "CONFORMITÀ":"#9f7aea", "URGENTE":"#fc8181", "CONTRATTUALE":"#f6ad55" };
 
             var gaps = s.questionnaire_gaps || [];
             var cat  = s.nis2_category ? s.nis2_category.category : "Fuori ambito";
             var critCount = gaps.filter(function(g){ return g.weight === "CRITICO"; }).length;
             var altoCount = gaps.filter(function(g){ return g.weight === "ALTO"; }).length;
 
+            // Use supplier modules if Fornitore NIS2
+            var modMap = (cat === 'Fornitore NIS2') ? PORTABLE_MODULES_SUPPLIER : PORTABLE_MODULES;
+
             // Collect modules needed for actual gaps
             var neededModules = [];
             var seenKeys = {};
             gaps.forEach(function(g) {
-                if (!PORTABLE_MODULES[g.key] || seenKeys[g.key]) return;
+                if (!modMap[g.key] || seenKeys[g.key]) return;
                 seenKeys[g.key] = true;
-                neededModules.push({ mod: PORTABLE_MODULES[g.key], gap: g });
+                neededModules.push({ mod: modMap[g.key], gap: g });
             });
 
             // Alert level
@@ -921,6 +999,10 @@ HTML_TEMPLATE = r"""
                 alertBg="rgba(246,173,85,0.1)"; alertBorder="rgba(246,173,85,0.5)";
                 alertIcon="⚠️"; alertTitle="Intervento prioritario richiesto";
                 alertIntro="Sono presenti <strong>" + (critCount + altoCount) + " lacune di governance</strong> che devono essere colmate prima del prossimo audit o incidente. I moduli seguenti risolvono esattamente i gap rilevati.";
+            } else if (cat === "Fornitore NIS2") {
+                alertBg="rgba(156,135,226,0.12)"; alertBorder="rgba(156,135,226,0.5)";
+                alertIcon="🔗"; alertTitle="Fornitore NIS2 — il tuo cliente verificherà questi requisiti";
+                alertIntro="Anche se non sei direttamente soggetto NIS2, i tuoi clienti Essenziali o Importanti sono <strong>obbligati dall\'Art. 21.2.d</strong> a verificare la tua sicurezza. Ogni lacuna è un rischio concreto di <strong>perdere il contratto</strong> o essere ritenuto co-responsabile in caso di incidente.";
             } else if (cat === "Fuori ambito") {
                 alertBg="rgba(99,179,237,0.08)"; alertBorder="rgba(99,179,237,0.3)";
                 alertIcon="💡"; alertTitle="NIS2 non obbligatorio — ma i rischi cyber sono reali";
