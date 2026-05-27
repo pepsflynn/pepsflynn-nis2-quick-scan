@@ -1270,11 +1270,7 @@ def api_verify_dns():
     res["level"]="CONFORME" if res["score"]>=25 else "PARZIALE" if res["score"]>=12 else "NON CONFORME"
     return jsonify({"success":True,"results":res})
 
-@app.route('/api/test-lookup', methods=['POST'])
-def api_test_lookup():
-    if _scan_mod and hasattr(_scan_mod, 'test_lookup'):
-        return _scan_mod.test_lookup()
-    return jsonify({"success":False})
+
 
 # ═══════════════════════════════════════════════════════════════
 # RUN
