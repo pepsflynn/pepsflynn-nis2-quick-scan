@@ -273,12 +273,16 @@ HTML_TEMPLATE = r"""
                 <div id="email-domain-warning" style="display:none;font-size:12px;padding:7px 10px;border-radius:6px;margin:4px 0 6px;"></div>
                 <button class="btn-small" onclick="sendOTP()" id="btn-otp" style="margin-top:8px;">📧 Invia codice OTP</button>
                 <div id="otp-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;"></div>
-                <div id="otp-verify-section" style="display:none;margin-top:12px;">
+                <div id="otp-verify-section" style="margin-top:12px;opacity:0.4;pointer-events:none;transition:opacity .3s;">
+                    <label style="font-size:12px;color:#a0aec0;display:block;margin-bottom:6px;">
+                        Inserisci il codice ricevuto via email:
+                    </label>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <input type="text" id="otp-code" placeholder="Codice a 6 cifre"
-                               style="flex:1;min-width:160px;letter-spacing:6px;font-size:18px;text-align:center;"
+                        <input type="text" id="otp-code" placeholder="_ _ _ _ _ _"
+                               style="flex:1;min-width:160px;letter-spacing:10px;font-size:24px;font-weight:700;text-align:center;padding:10px;"
                                maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')">
-                        <button class="btn-small" onclick="verifyOTP()" id="btn-verify-otp">✅ Verifica codice</button>
+                        <button class="btn-small" onclick="verifyOTP()" id="btn-verify-otp"
+                                style="padding:12px 20px;font-size:14px;">✅ Verifica</button>
                     </div>
                     <div id="otp-verify-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;"></div>
                     <p style="font-size:11px;color:#718096;margin-top:8px;">
@@ -753,7 +757,18 @@ HTML_TEMPLATE = r"""
                             if (otpField) otpField.value = d.dev_code;
                         }
                     }
-                    document.getElementById("otp-verify-section").style.display = "block";
+                    // Abilita la sezione verifica codice
+                    var vs = document.getElementById("otp-verify-section");
+                    if (vs) {
+                        vs.style.opacity = "1";
+                        vs.style.pointerEvents = "auto";
+                        vs.scrollIntoView({ behavior:"smooth", block:"nearest" });
+                    }
+                    // Focus automatico sul campo codice
+                    setTimeout(function(){
+                        var f = document.getElementById("otp-code");
+                        if (f) { f.focus(); f.value = ""; }
+                    }, 400);
                     // Avvia countdown 10 minuti
                     startOtpCountdown(600);
                 } else {
