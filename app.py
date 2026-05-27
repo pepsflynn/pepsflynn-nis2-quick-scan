@@ -284,7 +284,7 @@ HTML_TEMPLATE = r"""
                         <button class="btn-small" onclick="verifyOTP()" id="btn-verify-otp"
                                 style="padding:14px 24px;font-size:14px;white-space:nowrap;">✅ Verifica codice</button>
                     </div>
-                    <div id="otp-verify-status" style="display:none;font-size:13px;padding:10px 14px;border-radius:6px;margin-top:10px;"></div>
+                    <div id="otp-verify-status" style="font-size:13px;padding:10px 14px;border-radius:6px;margin-top:10px;min-height:20px;"></div>
                     <p style="font-size:11px;color:#718096;margin-top:10px;">
                         Non hai ricevuto l\'email? Controlla lo spam oppure
                         <a href="#" onclick="sendOTP();return false;" style="color:#63b3ed;">invia di nuovo</a>.
@@ -797,30 +797,47 @@ HTML_TEMPLATE = r"""
         }
 
         function verifyOTP() {
-            var email = document.getElementById("email").value.trim();
-            var code  = document.getElementById("otp-code").value.trim();
-            if (!code) { alert("Inserisci il codice ricevuto"); return; }
-            var btn = document.getElementById("btn-verify-otp");
+            var email  = document.getElementById("email").value.trim();
+            var code   = document.getElementById("otp-code").value.trim();
+            var btn    = document.getElementById("btn-verify-otp");
             var status = document.getElementById("otp-verify-status");
-            btn.disabled = true; btn.textContent = "Verifica...";
+
+            if (!code || code.length < 6) {
+                status.style.background='rgba(246,173,85,0.1)';
+                status.style.border='1px solid rgba(246,173,85,0.4)';
+                status.style.color='#f6ad55';
+                status.innerHTML='⚠️ Inserisci il codice a 6 cifre ricevuto via email.';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = "Verifica in corso...";
+            status.style.background='rgba(255,255,255,0.04)';
+            status.style.border='1px solid rgba(255,255,255,0.1)';
+            status.style.color='#a0aec0';
+            status.innerHTML = '⏳ Verifica in corso...';
+
             fetch("/api/verify-otp", {
-                method:"POST", headers:{"Content-Type":"application/json"},
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
                 body: JSON.stringify({email: email, code: code})
             })
-            .then(function(r){ return r.json(); })
+            .then(function(r) {
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                return r.json();
+            })
             .then(function(d) {
-                btn.disabled = false; btn.textContent = "Verifica";
-                if (status) { status.style.display='block'; }
+                btn.disabled = false;
+                btn.textContent = "✅ Verifica";
                 if (d.valid) {
                     if (_otpTimer) clearInterval(_otpTimer);
-                    if (status) {
-                        status.style.background='rgba(56,161,105,0.08)';
-                        status.style.border='1px solid rgba(56,161,105,0.3)';
-                        status.style.color='#68d391';
-                        status.innerHTML='✅ <strong>Email verificata.</strong> ' + (d.message || '');
-                    }
-                    otpVerified = true; checkBoth();
-                    // Mostra la sezione DNS solo dopo OTP verificato
+                    status.style.background='rgba(56,161,105,0.12)';
+                    status.style.border='1px solid rgba(56,161,105,0.5)';
+                    status.style.color='#68d391';
+                    status.innerHTML='✅ <strong>Email verificata correttamente.</strong> Ora esegui la verifica DNS.';
+                    otpVerified = true;
+                    checkBoth();
+                    // Mostra sezione DNS
                     var dnsSec = document.getElementById("dns-section");
                     if (dnsSec) {
                         dnsSec.style.display = "block";
@@ -829,15 +846,21 @@ HTML_TEMPLATE = r"""
                     }
                     document.getElementById("goto-step3").disabled = !(dnsVerified && otpVerified);
                 } else {
-                    if (status) {
-                        status.style.background='rgba(252,129,129,0.08)';
-                        status.style.border='1px solid rgba(252,129,129,0.3)';
-                        status.style.color='#fc8181';
-                        status.innerHTML='❌ ' + (d.message || "Codice non corretto");
-                    }
+                    status.style.background='rgba(252,129,129,0.08)';
+                    status.style.border='1px solid rgba(252,129,129,0.4)';
+                    status.style.color='#fc8181';
+                    status.innerHTML='❌ ' + (d.message || "Codice non corretto. Riprova.");
+                    btn.textContent = "✅ Verifica";
                 }
             })
-            .catch(function(){ btn.disabled=false; btn.textContent="Verifica"; });
+            .catch(function(err) {
+                btn.disabled = false;
+                btn.textContent = "✅ Verifica";
+                status.style.background='rgba(252,129,129,0.08)';
+                status.style.border='1px solid rgba(252,129,129,0.4)';
+                status.style.color='#fc8181';
+                status.innerHTML='❌ Errore di rete: ' + err.message + '. Riprova.';
+            });
         }
 
         function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
