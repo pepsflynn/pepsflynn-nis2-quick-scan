@@ -1004,7 +1004,7 @@ def supplier_task(tid):
     else:
         form_content = _render_confirm_form(task)
 
-    desc_html = f'<div class="alert alert-info" style="font-size:13px"><i class="ti ti-info-circle"></i> {task["description"]}</div>' if task.get('description') else ''
+    desc_html = f'<div class="alert alert-info" style="font-size:13px"><i class="ti ti-info-circle"></i> {task["description"]}</div>' if task['description'] else ''
 
     return render_template_string(BASE_CSS + f"""
 <body>
