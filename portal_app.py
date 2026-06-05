@@ -129,89 +129,182 @@ def score_questionnaire(answers: dict):
 # SHARED STYLES & HELPERS
 # ═══════════════════════════════════════════════════════════════
 BASE_CSS = """
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
+:root{
+  --teal:#1ABCBC; --teal-dark:#0f9e9e; --teal-light:rgba(26,188,188,0.12);
+  --navy:#0B1829; --navy2:#0f2035; --navy3:#152840;
+  --blue:#185FA5; --blue-light:rgba(24,95,165,0.15);
+  --text:#E2E8F0; --text2:#94A3B8; --text3:#64748B;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.12);
+  --red:#EF4444; --yellow:#F59E0B; --green:#10B981; --purple:#8B5CF6;
+  --red-bg:rgba(239,68,68,0.1); --yellow-bg:rgba(245,158,11,0.1);
+  --green-bg:rgba(16,185,129,0.1); --purple-bg:rgba(139,92,246,0.1);
+  --radius:10px; --radius-sm:6px; --radius-lg:14px;
+  --shadow:0 4px 24px rgba(0,0,0,0.3);
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:#0d1b2a;color:#e2e8f0;min-height:100vh}
-a{color:#63b3ed;text-decoration:none}a:hover{text-decoration:underline}
-.nav{background:#0a1628;border-bottom:1px solid rgba(255,255,255,0.08);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:56px}
-.nav-brand{font-size:16px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px}
-.nav-links{display:flex;gap:16px;align-items:center;font-size:13px}
-.nav-links a{color:#a0aec0}
-.nav-user{font-size:12px;color:#68d391;background:rgba(104,211,145,0.1);padding:4px 10px;border-radius:4px}
-.container{max-width:1100px;margin:0 auto;padding:32px 20px}
-.container-sm{max-width:560px;margin:0 auto;padding:32px 20px}
-.card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:24px;margin-bottom:20px}
-.card-title{font-size:18px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-h1{font-size:26px;font-weight:600;margin-bottom:4px}
-h2{font-size:20px;font-weight:600;margin-bottom:12px}
-h3{font-size:16px;font-weight:600;margin-bottom:8px}
-p{line-height:1.6;color:#a0aec0;font-size:14px}
-label{font-size:13px;color:#a0aec0;display:block;margin-bottom:5px;margin-top:14px}
-input,select,textarea{width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e2e8f0;font-size:14px;outline:none}
-input:focus,select:focus,textarea:focus{border-color:#63b3ed}
-textarea{resize:vertical;min-height:80px}
-.btn{display:inline-block;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:opacity .15s}
-.btn-primary{background:#185fa5;color:#fff}.btn-primary:hover{opacity:.85}
-.btn-success{background:#0f6e56;color:#fff}.btn-success:hover{opacity:.85}
-.btn-danger{background:#7f1d1d;color:#f8b4b4;font-size:13px;padding:7px 14px}.btn-danger:hover{opacity:.85}
-.btn-outline{background:transparent;border:1px solid rgba(255,255,255,0.2);color:#e2e8f0}.btn-outline:hover{background:rgba(255,255,255,0.05)}
-.btn-sm{padding:6px 14px;font-size:13px}
-.btn-full{width:100%;margin-top:18px;padding:12px}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
-.badge-red{background:rgba(252,129,129,0.15);color:#fc8181}
-.badge-yellow{background:rgba(246,224,94,0.15);color:#f6e05e}
-.badge-green{background:rgba(104,211,145,0.15);color:#68d391}
-.badge-blue{background:rgba(99,179,237,0.15);color:#63b3ed}
-.badge-purple{background:rgba(183,148,244,0.15);color:#b794f4}
-.badge-gray{background:rgba(160,174,192,0.15);color:#a0aec0}
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
-.stat-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:16px;text-align:center}
-.stat-num{font-size:28px;font-weight:700;color:#63b3ed}
-.stat-label{font-size:12px;color:#718096;margin-top:4px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{padding:10px 12px;text-align:left;color:#718096;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.06)}
-td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.04);color:#cbd5e0}
-tr:hover td{background:rgba(255,255,255,0.02)}
-.alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px}
-.alert-error{background:rgba(252,129,129,0.1);border:1px solid rgba(252,129,129,0.3);color:#fc8181}
-.alert-success{background:rgba(104,211,145,0.1);border:1px solid rgba(104,211,145,0.3);color:#68d391}
-.alert-info{background:rgba(99,179,237,0.08);border:1px solid rgba(99,179,237,0.25);color:#63b3ed}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--navy);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6}
+a{color:var(--teal);text-decoration:none;transition:opacity .15s}
+a:hover{opacity:.8}
+
+/* ── Topbar ── */
+.topbar{position:sticky;top:0;z-index:100;background:rgba(11,24,41,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;padding:0 28px;gap:24px}
+.topbar-logo{display:flex;align-items:center;gap:0;text-decoration:none;flex-shrink:0}
+.topbar-logo:hover{opacity:1}
+.logo-text{font-size:20px;font-weight:700;letter-spacing:1.5px;color:#fff;font-family:'Inter',sans-serif}
+.logo-badge{display:inline-block;font-size:10px;font-weight:600;color:var(--teal);background:var(--teal-light);border:1px solid rgba(26,188,188,0.3);border-radius:4px;padding:2px 7px;margin-left:10px;letter-spacing:.5px;vertical-align:middle}
+.topbar-links{display:flex;align-items:center;gap:20px;margin-left:auto;font-size:13px}
+.topbar-links a{color:var(--text2)}
+.topbar-links a:hover{color:var(--teal)}
+.topbar-user{display:flex;align-items:center;gap:8px;background:var(--navy3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px 5px 8px;font-size:12px;color:var(--text2)}
+.topbar-user i{color:var(--teal)}
+.topbar-sep{color:var(--border2);margin:0 2px}
+
+/* ── Layout ── */
+.page{max-width:1140px;margin:0 auto;padding:32px 20px}
+.page-sm{max-width:540px;margin:0 auto;padding:40px 20px}
 .page-header{margin-bottom:28px}
-.page-header p{margin-top:4px}
-.progress-bar{height:8px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden}
-.progress-fill{height:100%;border-radius:4px;transition:width .4s}
+.page-header h1{font-size:24px;font-weight:700;color:#fff;margin-bottom:4px}
+.page-header p{color:var(--text2);font-size:14px}
+
+/* ── Cards ── */
+.card{background:var(--navy2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px}
+.card-title{font-size:16px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.card-title i{color:var(--teal)}
+
+/* ── Stats ── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--navy2);border:1px solid var(--border);border-radius:var(--radius);padding:18px;text-align:center;transition:border-color .2s}
+.stat-card:hover{border-color:var(--teal)}
+.stat-num{font-size:30px;font-weight:700;color:var(--teal)}
+.stat-label{font-size:12px;color:var(--text2);margin-top:4px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s;text-decoration:none}
+.btn-primary{background:var(--teal);color:#0B1829}.btn-primary:hover{background:var(--teal-dark);opacity:1}
+.btn-secondary{background:var(--blue);color:#fff}.btn-secondary:hover{opacity:.85}
+.btn-success{background:#0f6e56;color:#fff}.btn-success:hover{opacity:.85}
+.btn-danger{background:rgba(239,68,68,0.12);color:#EF4444;border:1px solid rgba(239,68,68,0.25)}.btn-danger:hover{background:rgba(239,68,68,0.2)}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--text)}.btn-outline:hover{border-color:var(--teal);color:var(--teal)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-full{width:100%;justify-content:center;padding:12px}
+
+/* ── Forms ── */
+label{font-size:12px;color:var(--text2);display:block;margin:14px 0 5px;font-weight:500;letter-spacing:.3px;text-transform:uppercase}
+input,select,textarea{width:100%;padding:10px 13px;background:var(--navy);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(26,188,188,0.08)}
+select option{background:var(--navy2)}
+textarea{resize:vertical;min-height:80px}
+
+/* ── Alerts ── */
+.alert{padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:14px;display:flex;align-items:flex-start;gap:8px}
+.alert i{flex-shrink:0;margin-top:1px}
+.alert-error{background:var(--red-bg);border:1px solid rgba(239,68,68,0.3);color:#FCA5A5}
+.alert-success{background:var(--green-bg);border:1px solid rgba(16,185,129,0.35);color:#6EE7B7}
+.alert-info{background:rgba(26,188,188,0.07);border:1px solid rgba(26,188,188,0.25);color:var(--teal)}
+.alert-warning{background:var(--yellow-bg);border:1px solid rgba(245,158,11,0.3);color:#FCD34D}
+
+/* ── Table ── */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:10px 12px;text-align:left;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+td{padding:11px 12px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(26,188,188,0.04)}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-red{background:var(--red-bg);color:#FCA5A5}
+.badge-yellow{background:var(--yellow-bg);color:#FCD34D}
+.badge-green{background:var(--green-bg);color:#6EE7B7}
+.badge-blue{background:var(--blue-light);color:#93C5FD}
+.badge-teal{background:var(--teal-light);color:var(--teal)}
+.badge-purple{background:var(--purple-bg);color:#C4B5FD}
+.badge-gray{background:rgba(100,116,139,0.15);color:var(--text2)}
+
+/* ── Progress ── */
+.progress-bar{height:6px;background:var(--navy3);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width .5s}
+
+/* ── Questionnaire ── */
+.section-header{background:rgba(26,188,188,0.06);border-left:3px solid var(--teal);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:10px 14px;margin:20px 0 10px}
+.section-header h3{font-size:13px;color:var(--teal);font-weight:600;margin:0}
+.section-header small{color:var(--text3);font-size:11px}
+.q-block{background:var(--navy);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;transition:border-color .2s}
+.q-block:hover{border-color:var(--border2)}
+.q-text{font-size:13px;color:var(--text);margin-bottom:10px;line-height:1.55}
+.q-opts{display:flex;flex-direction:column;gap:6px}
+.q-opt{display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--navy2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 13px;font-size:13px;color:var(--text2);transition:all .15s}
+.q-opt:hover{border-color:var(--teal);color:var(--text);background:var(--teal-light)}
+
+/* ── Task rows ── */
+.task-row{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--navy);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;transition:border-color .2s}
+.task-row:hover{border-color:var(--border2)}
+.task-icon{width:38px;height:38px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px}
+
+/* ── Grid ── */
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:640px){.form-row,.two-col{grid-template-columns:1fr}}
-.section-header{background:rgba(24,95,165,0.12);border-left:3px solid #185fa5;border-radius:4px;padding:10px 14px;margin:20px 0 12px}
-.section-header h3{font-size:14px;color:#63b3ed;margin:0}
-.section-header small{color:#718096;font-size:11px}
-.q-block{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:14px 16px;margin-bottom:10px}
-.q-text{font-size:13px;color:#e2e8f0;margin-bottom:10px;line-height:1.5}
-.q-opts{display:flex;flex-direction:column;gap:6px}
-.q-opt{display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:8px 12px;font-size:13px;color:#cbd5e0}
-.q-opt:hover{border-color:rgba(99,179,237,0.3);background:rgba(99,179,237,0.05)}
-.task-row{display:flex;align-items:center;gap:10px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px}
-.task-icon{width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px}
+@media(max-width:640px){.two-col,.form-row{grid-template-columns:1fr}.topbar-links .topbar-link-hide{display:none}}
+
+/* ── Footer ── */
+.footer{text-align:center;padding:28px 20px;margin-top:40px;border-top:1px solid var(--border);color:var(--text3);font-size:12px}
+.footer a{color:var(--text3)}.footer a:hover{color:var(--teal)}
 </style>
 """
 
-def nav(role='', name='', extra_links=''):
-    logout_url = '/enterprise/logout' if role == 'enterprise' else '/supplier/logout'
-    user_html = f'<span class="nav-user"><i class="ti ti-user" style="vertical-align:-2px"></i> {name}</span> <a href="{logout_url}" style="color:#a0aec0;font-size:12px">Esci</a>' if name else ''
-    return f"""
-    <nav class="nav">
-        <div class="nav-brand">
-            <i class="ti ti-shield-check" style="color:#63b3ed"></i>
-            NIS2 Portal — Ichnobyte
-        </div>
-        <div class="nav-links">
-            {extra_links}
-            {user_html}
-        </div>
-    </nav>"""
+# ── Logo SVG inline (O → scudo compliance) ─────────────────
+LOGO_SVG = """<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;margin:0 1px">
+  <circle cx="11" cy="11" r="10.5" fill="white"/>
+  <circle cx="11" cy="11" r="7.5" fill="#1ABCBC"/>
+  <path d="M11 4.5 L16.5 7 V11.5 C16.5 15 13.8 17.8 11 19 C8.2 17.8 5.5 15 5.5 11.5 V7 Z" fill="white"/>
+  <polyline points="8.5,11 10.2,13 14,9" stroke="#1ABCBC" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>"""
+
+
+def nav(role='', user_name='', extra_links=''):
+    logout_url = '/enterprise/logout' if role == 'enterprise' else '/supplier/logout' if role == 'supplier' else '/'
+    role_label = {'enterprise': 'Enterprise', 'supplier': 'Fornitore'}.get(role, '')
+
+    user_html = ''
+    if user_name:
+        user_html = (
+            f'<div class="topbar-user">'
+            f'<i class="ti ti-user-circle" style="font-size:16px"></i>'
+            f'<span>{user_name}</span>'
+            f'<span class="topbar-sep">·</span>'
+            f'<a href="{logout_url}" style="color:var(--text3);font-size:11px">Esci</a>'
+            f'</div>'
+        )
+
+    return (
+        '<div class="topbar">'
+        '<a href="/" class="topbar-logo">'
+        '<span class="logo-text">ICHN' + LOGO_SVG + 'BYTE</span>'
+        '<span class="logo-badge">NIS2 PORTAL</span>'
+        '</a>'
+        '<div class="topbar-links">'
+        + extra_links +
+        user_html +
+        '</div>'
+        '</div>'
+    )
+
+
+def footer():
+    return (
+        '<div class="footer">'
+        '© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — '
+        'P.IVA 03954630921 — '
+        '<a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a>'
+        '</div>'
+    )
+
 
 def flash_html(category='info'):
     msgs = []
@@ -249,7 +342,7 @@ def landing():
     return render_template_string(BASE_CSS + r"""
 <body>
 """ + nav() + r"""
-<div class="container-sm" style="padding-top:48px">
+<div class="page-sm" style="padding-top:48px">
     <div style="text-align:center;margin-bottom:40px">
         <i class="ti ti-shield-check" style="font-size:48px;color:#63b3ed"></i>
         <h1 style="margin-top:12px">NIS2 Compliance Portal</h1>
@@ -304,6 +397,7 @@ def landing():
         Ichnobyte S.R.L. — NIS2 Compliance Portal v1.0
     </p>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 # ═══════════════════════════════════════════════════════════════
@@ -338,7 +432,7 @@ def enterprise_register():
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav()}
-<div class="container-sm">
+<div class="page-sm">
     <div class="page-header" style="margin-top:32px">
         <h1>Registrazione Enterprise</h1>
         <p>Crea il tuo account per gestire la compliance e i fornitori</p>
@@ -374,6 +468,7 @@ def enterprise_register():
         </p>
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 @app.route('/enterprise/login', methods=['GET','POST'])
@@ -391,7 +486,7 @@ def enterprise_login():
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav()}
-<div class="container-sm">
+<div class="page-sm">
     <div class="page-header" style="margin-top:40px;text-align:center">
         <i class="ti ti-building" style="font-size:36px;color:#fc8181"></i>
         <h1 style="margin-top:8px">Portale Enterprise</h1>
@@ -414,6 +509,7 @@ def enterprise_login():
         <a href="/">← Torna al portale</a>
     </p>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 @app.route('/enterprise/logout')
@@ -454,7 +550,7 @@ def enterprise_dashboard():
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav('enterprise', name, '<a href="/enterprise/fornitori/aggiungi">+ Fornitore</a> <a href="/enterprise/export" style="color:#68d391">⬇ Esporta</a> <a href="/enterprise/import" style="color:#f6ad55">⬆ Importa</a>')}
-<div class="container">
+<div class="page">
     <div class="page-header" style="margin-top:28px">
         <h1>Dashboard — {name}</h1>
         <p>Gestione supply chain e compliance NIS2 fornitori</p>
@@ -505,6 +601,7 @@ def enterprise_dashboard():
         </table>'''}
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 # ═══════════════════════════════════════════════════════════════
@@ -538,7 +635,7 @@ def enterprise_add_supplier():
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav('enterprise', name, '<a href="/enterprise/">← Dashboard</a>')}
-<div class="container-sm">
+<div class="page-sm">
     <div class="page-header" style="margin-top:28px">
         <h1>Aggiungi Fornitore</h1>
         <p>Crea l'anagrafica e le credenziali di accesso per il tuo fornitore</p>
@@ -575,6 +672,7 @@ def enterprise_add_supplier():
         </form>
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 @app.route('/enterprise/fornitore/<int:sid>')
@@ -613,7 +711,7 @@ def enterprise_supplier_detail(sid):
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav('enterprise', name, '<a href="/enterprise/">← Dashboard</a>')}
-<div class="container">
+<div class="page">
     <div style="margin-top:28px">
         {'<div class="alert alert-success"><i class="ti ti-check"></i> Fornitore creato. Codice accesso: <strong>'+code+'</strong> — condividilo con il fornitore.</div>' if nuovo else ''}
 
@@ -650,6 +748,7 @@ def enterprise_supplier_detail(sid):
         </div>
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 @app.route('/enterprise/fornitore/<int:sid>/elimina')
@@ -687,7 +786,7 @@ def enterprise_assign_task(sid):
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav('enterprise', name, f'<a href="/enterprise/fornitore/{sid}">← {sup["name"]}</a>')}
-<div class="container-sm">
+<div class="page-sm">
     <div class="page-header" style="margin-top:28px">
         <h1>Assegna Task</h1>
         <p>Assegna un'attività di compliance a <strong style="color:#e2e8f0">{sup['name']}</strong></p>
@@ -720,6 +819,7 @@ def enterprise_assign_task(sid):
         </form>
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 @app.route('/enterprise/task/elimina/<int:tid>')
@@ -761,7 +861,7 @@ def enterprise_view_submission(tid):
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav('enterprise', name, f'<a href="/enterprise/fornitore/{sup["id"]}">← {sup["name"]}</a>')}
-<div class="container">
+<div class="page">
     <div style="margin-top:28px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
         <div>
             <h1>{task['title']}</h1>
@@ -778,6 +878,7 @@ def enterprise_view_submission(tid):
         {sections_html}
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 # ═══════════════════════════════════════════════════════════════
@@ -802,7 +903,7 @@ def supplier_login():
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav()}
-<div class="container-sm">
+<div class="page-sm">
     <div class="page-header" style="margin-top:40px;text-align:center">
         <i class="ti ti-link" style="font-size:36px;color:#63b3ed"></i>
         <h1 style="margin-top:8px">Portale Fornitore</h1>
@@ -826,6 +927,7 @@ def supplier_login():
         <a href="/">← Torna al portale</a>
     </p>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 @app.route('/supplier/logout')
@@ -880,7 +982,7 @@ def supplier_dashboard():
     return render_template_string(BASE_CSS + f"""
 <body>
 {nav('supplier', name, f'<span style="font-size:12px;color:#718096">Cliente: {ent}</span>')}
-<div class="container">
+<div class="page">
     <div class="page-header" style="margin-top:28px">
         <h1>Dashboard Fornitore</h1>
         <p>Benvenuto {name} — task assegnati da <strong style="color:#e2e8f0">{ent}</strong></p>
@@ -915,6 +1017,7 @@ def supplier_dashboard():
         </p>
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 # ═══════════════════════════════════════════════════════════════
@@ -924,109 +1027,135 @@ def supplier_dashboard():
 @app.route('/supplier/task/<int:tid>', methods=['GET','POST'])
 @supplier_required
 def supplier_task(tid):
-    sid   = session['supplier_id']
-    name  = session['supplier_name']
-    ent   = session.get('supplier_ent','')
-    task  = get_task_by_id(tid)
+    sid  = session['supplier_id']
+    name = session['supplier_name']
+    ent  = session.get('supplier_ent', '')
+    task = get_task_by_id(tid)
     if not task or task['supplier_id'] != sid:
         return redirect('/supplier/')
 
-    existing_sub = get_submission_by_task(tid)
+    task_id    = int(task['id'])
+    task_type  = str(task['type'])
+    task_title = str(task['title'])
+    task_desc  = str(task['description'] or '')
+    task_due   = str(task['due_date'] or '')
+    is_questionnaire = (task_type == 'questionario_nis2')
 
-    # ── Se task già completato: mostra risultato ──────────────
-    if existing_sub:
-        answers = existing_sub['answers'] if isinstance(existing_sub['answers'], dict) else {}
-        score_color = '#68d391' if existing_sub['score_pct'] >= 70 else '#f6e05e' if existing_sub['score_pct'] >= 40 else '#fc8181'
-        risk_label  = 'BASSO' if existing_sub['score_pct'] >= 70 else 'MEDIO' if existing_sub['score_pct'] >= 40 else 'ALTO'
+    sub = get_submission_by_task(task_id)
 
-        sections_html = ''
-        if task['type'] == 'questionario_nis2':
+    # ── Task già completato ───────────────────────────────────
+    if sub:
+        answers   = sub['answers'] if isinstance(sub['answers'], dict) else {}
+        pct       = float(sub.get('score_pct') or 0)
+        s_color   = '#68d391' if pct >= 70 else '#f6e05e' if pct >= 40 else '#fc8181'
+        risk      = 'BASSO' if pct >= 70 else 'MEDIO' if pct >= 40 else 'ALTO'
+        submitted = str(sub.get('submitted_at', ''))[:10]
+        notes_val = str(sub.get('notes') or '')
+
+        if is_questionnaire:
+            body = ''
             for sec in SUPPLIER_QUESTIONNAIRE:
                 rows = ''
                 for q in sec['questions']:
-                    ans = answers.get(q['id'], '—')
-                    color = '#68d391' if ans=='si' else '#f6e05e' if ans=='parziale' else '#fc8181'
-                    label = {'si':'✅ Sì','parziale':'⚠️ Parziale','no':'❌ No'}.get(ans, ans)
-                    rows += f'<tr><td style="font-size:13px">{q["text"]}</td><td style="color:{color};font-size:13px;font-weight:500;white-space:nowrap">{label}</td></tr>'
-                sections_html += f'<div class="section-header"><h3><i class="ti {sec["icon"]}" style="margin-right:6px"></i>{sec["section"]}</h3></div><table>{rows}</table>'
+                    ans   = answers.get(q['id'], 'no')
+                    color = '#68d391' if ans == 'si' else '#f6e05e' if ans == 'parziale' else '#fc8181'
+                    lbl   = {'si': '✅ Sì', 'parziale': '⚠️ Parziale', 'no': '❌ No'}.get(ans, ans)
+                    rows += ('<tr>'
+                             '<td style="font-size:13px;padding:8px 10px;color:#cbd5e0">' + q['text'] + '</td>'
+                             '<td style="font-size:13px;padding:8px 10px;font-weight:600;white-space:nowrap;color:' + color + '">' + lbl + '</td>'
+                             '</tr>')
+                body += ('<div class="section-header">'
+                         '<h3><i class="ti ' + sec['icon'] + '" style="margin-right:6px"></i>'
+                         + sec['section'] + '</h3>'
+                         '<small>' + sec['art'] + '</small></div>'
+                         '<table style="width:100%;margin-bottom:8px">' + rows + '</table>')
+        else:
+            conf     = answers.get('conferma', '—')
+            conf_lbl = {'si': '✅ Sì — requisito soddisfatto',
+                        'parziale': '⚠️ Parzialmente implementato',
+                        'no': '❌ Non ancora implementato'}.get(conf, conf)
+            note_val = answers.get('note', '')
+            body = ('<div style="font-size:16px;padding:20px 0;color:#e2e8f0">' + conf_lbl + '</div>')
+            if note_val:
+                body += '<p style="font-size:13px;color:#a0aec0;margin-top:4px">Note: ' + note_val + '</p>'
 
-        return render_template_string(BASE_CSS + f"""
-<body>
-{nav('supplier', name, f'<a href="/supplier/">← Dashboard</a>')}
-<div class="container">
-    <div style="margin-top:28px;margin-bottom:24px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;align-items:flex-start">
-        <div>
-            <h1>{task['title']}</h1>
-            <p>Completato il {existing_sub['submitted_at'][:10]}</p>
-        </div>
-        <div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:12px;padding:16px 24px;border:1px solid rgba(255,255,255,0.08)">
-            <div style="font-size:36px;font-weight:700;color:{score_color}">{existing_sub['score_pct']}%</div>
-            <div style="font-size:12px;color:#718096">Rischio: {risk_label}</div>
-        </div>
-    </div>
-    <div class="card">
-        <div class="card-title"><i class="ti ti-clipboard-check"></i> Le tue risposte</div>
-        {sections_html if task['type']=='questionario_nis2' else '<p>Conferma ricevuta.</p>'}
-    </div>
-    <div class="alert alert-success">
-        <i class="ti ti-check"></i> Task completato. Il tuo cliente può visualizzare questo report nel suo portale.
-    </div>
-</div>
-</body>""")
+        notes_html = ''
+        if notes_val:
+            notes_html = '<div class="alert alert-info"><strong>Note aggiuntive:</strong> ' + notes_val + '</div>'
 
-    # ── Compilazione task ─────────────────────────────────────
+        page = (BASE_CSS
+                + '<body>'
+                + nav('supplier', name, '<a href="/supplier/">← Dashboard</a>')
+                + '<div class="page">'
+                + '<div style="margin-top:28px;margin-bottom:24px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;align-items:flex-start">'
+                + '<div><h1>' + task_title + '</h1><p>Completato il ' + submitted + '</p></div>'
+                + '<div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:12px;padding:16px 24px;border:1px solid rgba(255,255,255,0.08)">'
+                + '<div style="font-size:36px;font-weight:700;color:' + s_color + '">' + str(round(pct)) + '%</div>'
+                + '<div style="font-size:12px;color:#718096">Rischio: ' + risk + '</div>'
+                + '</div></div>'
+                + notes_html
+                + '<div class="card">'
+                + '<div class="card-title"><i class="ti ti-clipboard-check"></i> '
+                + ('Risposte al questionario' if is_questionnaire else 'Risposta fornita') + '</div>'
+                + body
+                + '</div>'
+                + '<div class="alert alert-success" style="margin-top:12px">'
+                + '<i class="ti ti-check"></i> Task completato. Il tuo cliente può visualizzare questo report.'
+                + '</div>'
+                + '</div>' + footer() + '</body>')
+        return render_template_string(page)
+
+    # ── Form compilazione ─────────────────────────────────────
     error = ''
     if request.method == 'POST':
-        if task['type'] == 'questionario_nis2':
+        if is_questionnaire:
             answers = {}
             for sec in SUPPLIER_QUESTIONNAIRE:
                 for q in sec['questions']:
                     answers[q['id']] = request.form.get(q['id'], 'no')
             score, pct = score_questionnaire(answers)
-            notes = request.form.get('notes','').strip()
+            notes = request.form.get('notes', '').strip()
         else:
-            conferma = request.form.get('conferma','')
+            conferma = request.form.get('conferma', '')
             if not conferma:
                 error = 'Seleziona una risposta prima di inviare.'
             else:
-                answers = {'conferma': conferma, 'note': request.form.get('notes','')}
+                answers = {'conferma': conferma,
+                           'note': request.form.get('notes', '')}
                 score = 3.0 if conferma == 'si' else 1.5 if conferma == 'parziale' else 0.0
                 pct   = int(score / 3 * 100)
-                notes = request.form.get('notes','').strip()
+                notes = request.form.get('notes', '').strip()
 
         if not error:
-            create_submission(tid, sid, answers, score, pct, notes)
-            update_task_status(tid, 'completato')
-            return redirect(f'/supplier/task/{tid}')
+            create_submission(task_id, sid, answers, score, pct, notes)
+            update_task_status(task_id, 'completato')
+            return redirect('/supplier/task/' + str(task_id))
 
-    # Render form
-    if task['type'] == 'questionario_nis2':
-        form_content = _render_questionnaire_form()
-    else:
-        form_content = _render_confirm_form(task)
+    form_body = _render_questionnaire_form() if is_questionnaire else _render_confirm_form()
+    desc_html  = ('<div class="alert alert-info" style="font-size:13px">'
+                  '<i class="ti ti-info-circle"></i> ' + task_desc + '</div>') if task_desc else ''
+    error_html = '<div class="alert alert-error">' + error + '</div>' if error else ''
+    due_html   = '&nbsp;|&nbsp;Scadenza: ' + task_due if task_due else ''
 
-    desc_html = f'<div class="alert alert-info" style="font-size:13px"><i class="ti ti-info-circle"></i> {task["description"]}</div>' if task['description'] else ''
+    page = (BASE_CSS
+            + '<body>'
+            + nav('supplier', name, '<a href="/supplier/">← Dashboard</a>')
+            + '<div class="page">'
+            + '<div class="page-header" style="margin-top:28px">'
+            + '<h1>' + task_title + '</h1>'
+            + '<p>Assegnato da: ' + ent + due_html + '</p>'
+            + '</div>'
+            + desc_html + error_html
+            + '<form method="post">'
+            + form_body
+            + '<label style="margin-top:16px">Note aggiuntive (opzionale)</label>'
+            + '<textarea name="notes" placeholder="Eventuali osservazioni, riferimenti documentali, ecc."></textarea>'
+            + '<button type="submit" class="btn btn-success btn-full" style="margin-top:20px">'
+            + '<i class="ti ti-send"></i> Invia risposta</button>'
+            + '</form></div>' + footer() + '</body>')
+    return render_template_string(page)
 
-    return render_template_string(BASE_CSS + f"""
-<body>
-{nav('supplier', name, f'<a href="/supplier/">← Dashboard</a>')}
-<div class="container">
-    <div class="page-header" style="margin-top:28px">
-        <h1>{task['title']}</h1>
-        <p>Assegnato da: {ent} {'| Scadenza: '+task['due_date'] if task['due_date'] else ''}</p>
-    </div>
-    {desc_html}
-    {'<div class="alert alert-error">'+error+'</div>' if error else ''}
-    <form method="post">
-        {form_content}
-        <label>Note aggiuntive (opzionale)</label>
-        <textarea name="notes" placeholder="Eventuali osservazioni, riferimenti documentali, ecc."></textarea>
-        <button type="submit" class="btn btn-success btn-full" style="margin-top:20px">
-            <i class="ti ti-send"></i> Invia risposta
-        </button>
-    </form>
-</div>
-</body>""")
+
 
 def _render_questionnaire_form():
     html = '<div class="alert alert-info" style="font-size:13px;margin-bottom:20px"><i class="ti ti-info-circle"></i> Rispondi a tutte le domande. Il report sarà visibile al tuo cliente nel portale enterprise.</div>'
@@ -1105,7 +1234,7 @@ def enterprise_import():
     return render_template_string(BASE_CSS + """
 <body>
 """ + nav('enterprise', name, '<a href="/enterprise/">← Dashboard</a>') + """
-<div class="container-sm">
+<div class="page-sm">
     <div class="page-header" style="margin-top:28px">
         <h1>⬆ Importa dati</h1>
         <p>Ripristina fornitori, task e risposte da un file di backup esportato in precedenza</p>
@@ -1155,6 +1284,7 @@ def enterprise_import():
         </div>
     </div>
 </div>
+<div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
 
