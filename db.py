@@ -303,3 +303,170 @@ def get_supplier_stats(supplier_id):
         n_done  = db.execute("SELECT COUNT(*) as n FROM tasks WHERE supplier_id=? AND status='completato'", (supplier_id,)).fetchone()['n']
         n_pend  = db.execute("SELECT COUNT(*) as n FROM tasks WHERE supplier_id=? AND status='assegnato'", (supplier_id,)).fetchone()['n']
         return {'tasks_total': n_tasks, 'tasks_done': n_done, 'tasks_pending': n_pend}
+
+
+# ─────────────────────────────────────────────
+# Export / Import
+# ─────────────────────────────────────────────
+
+def export_enterprise_data(enterprise_id):
+    """
+    Esporta tutti i dati di un'enterprise in un dizionario serializzabile.
+    Include: enterprise, suppliers, tasks, submissions.
+    """
+    from datetime import datetime
+    with get_db() as db:
+        ent = dict(db.execute(
+            "SELECT * FROM enterprises WHERE id=?", (enterprise_id,)
+        ).fetchone())
+
+        suppliers = []
+        for sup_row in db.execute(
+            "SELECT * FROM suppliers WHERE enterprise_id=? ORDER BY name",
+            (enterprise_id,)
+        ).fetchall():
+            sup = dict(sup_row)
+            tasks = []
+            for task_row in db.execute(
+                "SELECT * FROM tasks WHERE supplier_id=? ORDER BY created_at",
+                (sup['id'],)
+            ).fetchall():
+                task = dict(task_row)
+                sub_row = db.execute(
+                    "SELECT * FROM submissions WHERE task_id=? ORDER BY submitted_at DESC LIMIT 1",
+                    (task['id'],)
+                ).fetchone()
+                if sub_row:
+                    sub = dict(sub_row)
+                    try:
+                        sub['answers'] = json.loads(sub['answers'])
+                    except Exception:
+                        pass
+                    task['submission'] = sub
+                tasks.append(task)
+            sup['tasks'] = tasks
+            suppliers.append(sup)
+
+        return {
+            'exported_at':   datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'schema_version': '1.0',
+            'enterprise':    ent,
+            'suppliers':     suppliers,
+        }
+
+
+def import_enterprise_data(data):
+    """
+    Importa dati esportati nel database corrente.
+    - Se l'enterprise esiste (stessa email) la riusa, altrimenti la crea.
+    - Evita duplicati su suppliers (access_code) e tasks (created_at + title).
+    Restituisce (success: bool, message: str, counts: dict).
+    """
+    try:
+        ent_data = data.get('enterprise', {})
+        suppliers_data = data.get('suppliers', [])
+
+        n_sup = n_task = n_sub = 0
+
+        with get_db() as db:
+            # ── Enterprise ────────────────────────────────
+            existing_ent = db.execute(
+                "SELECT id FROM enterprises WHERE email=?", (ent_data['email'],)
+            ).fetchone()
+
+            if existing_ent:
+                ent_id = existing_ent['id']
+            else:
+                cur = db.execute(
+                    """INSERT INTO enterprises
+                       (name,email,password_hash,category,ateco,created_at)
+                       VALUES (?,?,?,?,?,?)""",
+                    (ent_data['name'], ent_data['email'],
+                     ent_data['password_hash'],
+                     ent_data.get('category','Importante'),
+                     ent_data.get('ateco',''),
+                     ent_data.get('created_at',''))
+                )
+                ent_id = cur.lastrowid
+
+            # ── Suppliers ─────────────────────────────────
+            for sup_data in suppliers_data:
+                existing_sup = db.execute(
+                    "SELECT id FROM suppliers WHERE access_code=?",
+                    (sup_data['access_code'],)
+                ).fetchone()
+
+                if existing_sup:
+                    sup_id = existing_sup['id']
+                else:
+                    cur = db.execute(
+                        """INSERT INTO suppliers
+                           (enterprise_id,name,email,password_hash,access_code,
+                            contact_name,ateco,notes,domain,created_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                        (ent_id,
+                         sup_data['name'], sup_data['email'],
+                         sup_data['password_hash'], sup_data['access_code'],
+                         sup_data.get('contact_name',''),
+                         sup_data.get('ateco',''),
+                         sup_data.get('notes',''),
+                         sup_data.get('domain',''),
+                         sup_data.get('created_at',''))
+                    )
+                    sup_id = cur.lastrowid
+                    n_sup += 1
+
+                # ── Tasks ─────────────────────────────────
+                for task_data in sup_data.get('tasks', []):
+                    existing_task = db.execute(
+                        """SELECT id FROM tasks
+                           WHERE supplier_id=? AND type=? AND created_at=?""",
+                        (sup_id, task_data['type'], task_data.get('created_at',''))
+                    ).fetchone()
+
+                    if existing_task:
+                        task_id = existing_task['id']
+                    else:
+                        cur = db.execute(
+                            """INSERT INTO tasks
+                               (supplier_id,enterprise_id,type,title,description,
+                                due_date,priority,status,created_at)
+                               VALUES (?,?,?,?,?,?,?,?,?)""",
+                            (sup_id, ent_id,
+                             task_data['type'], task_data['title'],
+                             task_data.get('description',''),
+                             task_data.get('due_date',''),
+                             task_data.get('priority','media'),
+                             task_data.get('status','assegnato'),
+                             task_data.get('created_at',''))
+                        )
+                        task_id = cur.lastrowid
+                        n_task += 1
+
+                    # ── Submission ────────────────────────
+                    sub_data = task_data.get('submission')
+                    if sub_data:
+                        existing_sub = db.execute(
+                            "SELECT id FROM submissions WHERE task_id=?", (task_id,)
+                        ).fetchone()
+                        if not existing_sub:
+                            answers = sub_data.get('answers', {})
+                            db.execute(
+                                """INSERT INTO submissions
+                                   (task_id,supplier_id,answers,score,score_pct,notes,submitted_at)
+                                   VALUES (?,?,?,?,?,?,?)""",
+                                (task_id, sup_id,
+                                 json.dumps(answers, ensure_ascii=False),
+                                 sub_data.get('score', 0),
+                                 sub_data.get('score_pct', 0),
+                                 sub_data.get('notes',''),
+                                 sub_data.get('submitted_at',''))
+                            )
+                            n_sub += 1
+
+        msg = (f"Importazione completata: {n_sup} fornitori, "
+               f"{n_task} task, {n_sub} risposte ripristinati.")
+        return True, msg, {'suppliers': n_sup, 'tasks': n_task, 'submissions': n_sub}
+
+    except Exception as e:
+        return False, f"Errore durante l'importazione: {str(e)}", {}

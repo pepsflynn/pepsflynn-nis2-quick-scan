@@ -6,6 +6,7 @@ Contiene: portal landing, enterprise dashboard, supplier portal, quick scan.
 from flask import (Flask, render_template_string, request, jsonify,
                    session, redirect, url_for, flash)
 from db import (init_db, create_enterprise, get_enterprise_by_email,
+                export_enterprise_data, import_enterprise_data,
                 get_enterprise_by_id, verify_password,
                 create_supplier, get_suppliers_by_enterprise,
                 get_supplier_by_id, get_supplier_by_email,
@@ -452,7 +453,7 @@ def enterprise_dashboard():
 
     return render_template_string(BASE_CSS + f"""
 <body>
-{nav('enterprise', name, '<a href="/enterprise/fornitori/aggiungi">+ Fornitore</a>')}
+{nav('enterprise', name, '<a href="/enterprise/fornitori/aggiungi">+ Fornitore</a> <a href="/enterprise/export" style="color:#68d391">⬇ Esporta</a> <a href="/enterprise/import" style="color:#f6ad55">⬆ Importa</a>')}
 <div class="container">
     <div class="page-header" style="margin-top:28px">
         <h1>Dashboard — {name}</h1>
@@ -1048,6 +1049,114 @@ def _render_confirm_form(task):
             <label class="q-opt"><input type="radio" name="conferma" value="no" style="width:auto;accent-color:#fc8181"> ❌ No — requisito non ancora implementato</label>
         </div>
     </div>"""
+
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE — EXPORT / IMPORT
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/enterprise/export')
+@enterprise_required
+def enterprise_export():
+    from flask import Response
+    from datetime import datetime
+    eid  = session['enterprise_id']
+    name = session['enterprise_name']
+    data = export_enterprise_data(eid)
+    filename = f"backup_nis2_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+    return Response(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        mimetype='application/json',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Type': 'application/json; charset=utf-8'
+        }
+    )
+
+
+@app.route('/enterprise/import', methods=['GET','POST'])
+@enterprise_required
+def enterprise_import():
+    eid  = session['enterprise_id']
+    name = session['enterprise_name']
+    result_html = ''
+
+    if request.method == 'POST':
+        f = request.files.get('backup_file')
+        if not f or not f.filename:
+            result_html = '<div class="alert alert-error">Nessun file selezionato.</div>'
+        elif not f.filename.lower().endswith('.json'):
+            result_html = '<div class="alert alert-error">File non valido — caricare un file .json esportato da questo portale.</div>'
+        else:
+            try:
+                data = json.loads(f.read().decode('utf-8'))
+                if 'enterprise' not in data or 'suppliers' not in data:
+                    raise ValueError("Formato file non riconosciuto.")
+                ok, msg, counts = import_enterprise_data(data)
+                if ok:
+                    result_html = (f'<div class="alert alert-success">'
+                                   f'<i class="ti ti-check"></i> {msg}<br>'
+                                   f'<small style="color:#a0aec0">Exported il: {data.get("exported_at","N/D")}</small>'
+                                   f'</div>')
+                else:
+                    result_html = f'<div class="alert alert-error">{msg}</div>'
+            except Exception as e:
+                result_html = f'<div class="alert alert-error">Errore nel file: {str(e)}</div>'
+
+    return render_template_string(BASE_CSS + """
+<body>
+""" + nav('enterprise', name, '<a href="/enterprise/">← Dashboard</a>') + """
+<div class="container-sm">
+    <div class="page-header" style="margin-top:28px">
+        <h1>⬆ Importa dati</h1>
+        <p>Ripristina fornitori, task e risposte da un file di backup esportato in precedenza</p>
+    </div>
+    """ + result_html + """
+    <div class="card">
+        <h3 style="margin-bottom:12px">Carica file di backup</h3>
+        <form method="post" enctype="multipart/form-data">
+            <div style="border:2px dashed rgba(255,255,255,0.15);border-radius:8px;padding:32px;text-align:center;margin-bottom:16px">
+                <i class="ti ti-file-import" style="font-size:36px;color:#f6ad55;display:block;margin-bottom:12px"></i>
+                <p style="margin-bottom:12px">Seleziona il file <code style="color:#68d391">.json</code> esportato dal portale</p>
+                <input type="file" name="backup_file" accept=".json" required
+                       style="width:auto;background:transparent;border:none;color:#63b3ed">
+            </div>
+            <div class="alert alert-info" style="font-size:12px">
+                <i class="ti ti-info-circle"></i>
+                I dati esistenti non vengono sovrascritti — vengono aggiunti solo i record mancanti.
+                Le password dei fornitori rimangono funzionanti.
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">
+                <i class="ti ti-upload"></i> Importa dati
+            </button>
+        </form>
+    </div>
+
+    <div class="card" style="border-color:rgba(104,211,145,0.2)">
+        <div class="card-title" style="font-size:15px">
+            <i class="ti ti-download" style="color:#68d391"></i> Come esportare prima del deploy
+        </div>
+        <div style="counter-reset:steps">
+            <div style="display:flex;gap:12px;margin-bottom:10px;align-items:flex-start">
+                <span style="background:#185fa5;color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">1</span>
+                <p>Vai alla <a href="/enterprise/">dashboard enterprise</a> e clicca <strong style="color:#68d391">⬇ Esporta dati</strong></p>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:10px;align-items:flex-start">
+                <span style="background:#185fa5;color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">2</span>
+                <p>Salva il file <code style="color:#68d391">backup_nis2_YYYYMMDD.json</code> sul tuo computer</p>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:10px;align-items:flex-start">
+                <span style="background:#185fa5;color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">3</span>
+                <p>Fai il push su GitHub → Render fa il redeploy → database azzerato</p>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start">
+                <span style="background:#0f6e56;color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">4</span>
+                <p>Torna qui, carica il file salvato → tutto ripristinato in pochi secondi</p>
+            </div>
+        </div>
+    </div>
+</div>
+</body>""")
+
 
 # ═══════════════════════════════════════════════════════════════
 # QUICK SCAN — route + API implementate direttamente
