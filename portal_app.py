@@ -149,7 +149,15 @@ BASE_CSS = """
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{font-family:'Inter',system-ui,sans-serif;background:var(--navy);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6}
+body{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--navy);
+  background-image:
+    radial-gradient(ellipse at 15% 40%, rgba(26,188,188,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 15%, rgba(24,95,165,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 85%, rgba(26,188,188,0.05) 0%, transparent 45%);
+  color:var(--text);min-height:100vh;font-size:14px;line-height:1.6
+}
 a{color:var(--teal);text-decoration:none;transition:opacity .15s}
 a:hover{opacity:.8}
 
@@ -174,13 +182,13 @@ a:hover{opacity:.8}
 .page-header p{color:var(--text2);font-size:14px}
 
 /* ── Cards ── */
-.card{background:var(--navy2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px}
+.card{background:rgba(15,32,53,0.75);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px;transition:border-color .2s}.card:hover{border-color:rgba(26,188,188,0.2)}
 .card-title{font-size:16px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px;margin-bottom:16px}
 .card-title i{color:var(--teal)}
 
 /* ── Stats ── */
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
-.stat-card{background:var(--navy2);border:1px solid var(--border);border-radius:var(--radius);padding:18px;text-align:center;transition:border-color .2s}
+.stat-card{background:rgba(15,32,53,0.75);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);padding:18px;text-align:center;transition:border-color .2s}
 .stat-card:hover{border-color:var(--teal)}
 .stat-num{font-size:30px;font-weight:700;color:var(--teal)}
 .stat-label{font-size:12px;color:var(--text2);margin-top:4px}
@@ -393,12 +401,76 @@ def landing():
         </div>
     </div>
 
-    <p style="text-align:center;margin-top:24px;font-size:12px;color:#4a5568">
-        Ichnobyte S.R.L. — NIS2 Compliance Portal v1.0
-    </p>
+    <!-- Ripristina backup -->
+    <div style="margin-top:20px">
+        <button onclick="toggleRestore()"
+                style="width:100%;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:10px;padding:13px;color:var(--text2);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s"
+                onmouseover="this.style.borderColor='rgba(26,188,188,0.4)'"
+                onmouseout="this.style.borderColor='rgba(255,255,255,0.12)'">
+            <i class="ti ti-database-import" style="color:var(--teal)"></i>
+            Ripristina dati da backup (dopo un deploy)
+            <i class="ti ti-chevron-down" id="restore-chevron" style="margin-left:auto;transition:transform .2s"></i>
+        </button>
+        <div id="restore-panel" style="display:none;background:rgba(15,32,53,0.8);border:1px solid rgba(26,188,188,0.2);border-top:none;border-radius:0 0 10px 10px;padding:20px">
+            <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+                <i class="ti ti-info-circle" style="color:var(--teal)"></i>
+                Dopo ogni deploy su Render il database viene azzerato.
+                Carica il file <code style="color:var(--teal)">.json</code> esportato in precedenza per ripristinare
+                fornitori, task e credenziali di accesso.
+            </p>
+            <form method="post" action="/restore-backup" enctype="multipart/form-data">
+                <input type="file" name="backup_file" accept=".json" required
+                       style="margin-bottom:12px;color:var(--teal)">
+                <button type="submit"
+                        style="width:100%;background:var(--teal);color:#0B1829;border:none;border-radius:6px;padding:10px;font-size:13px;font-weight:600;cursor:pointer">
+                    <i class="ti ti-upload"></i> Importa e ripristina accesso
+                </button>
+            </form>
+        </div>
+    </div>
 </div>
+<script>
+function toggleRestore() {
+    var p = document.getElementById('restore-panel');
+    var c = document.getElementById('restore-chevron');
+    if (p.style.display === 'none') {
+        p.style.display = 'block';
+        c.style.transform = 'rotate(180deg)';
+    } else {
+        p.style.display = 'none';
+        c.style.transform = 'rotate(0deg)';
+    }
+}
+</script>
 <div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
+
+# ═══════════════════════════════════════════════════════════════
+# RESTORE BACKUP — dalla landing page, senza login
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/restore-backup', methods=['POST'])
+def restore_backup():
+    f = request.files.get('backup_file')
+    if not f or not f.filename:
+        return redirect('/?error=nofile')
+    try:
+        data = json.loads(f.read().decode('utf-8'))
+        if 'enterprise' not in data or 'suppliers' not in data:
+            return redirect('/?error=format')
+        ok, msg, counts = import_enterprise_data(data)
+        if ok:
+            # Auto-login the restored enterprise
+            ent = get_enterprise_by_email(data['enterprise']['email'])
+            if ent:
+                session['enterprise_id']   = ent['id']
+                session['enterprise_name'] = ent['name']
+                return redirect('/enterprise/?restored=1')
+        return redirect('/?error=import')
+    except Exception as e:
+        print(f'[RESTORE] Error: {e}')
+        return redirect('/?error=parse')
+
 
 # ═══════════════════════════════════════════════════════════════
 # ENTERPRISE — AUTH
@@ -551,7 +623,8 @@ def enterprise_dashboard():
 <body>
 {nav('enterprise', name, '<a href="/enterprise/fornitori/aggiungi">+ Fornitore</a> <a href="/enterprise/export" style="color:#68d391">⬇ Esporta</a> <a href="/enterprise/import" style="color:#f6ad55">⬆ Importa</a>')}
 <div class="page">
-    <div class="page-header" style="margin-top:28px">
+    {'<div class="alert alert-success" style="margin-top:20px"><i class="ti ti-database-import"></i> Backup ripristinato con successo — bentornato!</div>' if request.args.get('restored') else ''}
+    <div class="page-header" style="margin-top:12px">
         <h1>Dashboard — {name}</h1>
         <p>Gestione supply chain e compliance NIS2 fornitori</p>
     </div>
