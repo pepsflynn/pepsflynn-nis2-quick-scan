@@ -440,47 +440,7 @@ def landing():
         </div>
     </div>
 
-    <!-- Ripristina backup -->
-    <div style="margin-top:20px">
-        <button onclick="toggleRestore()"
-                style="width:100%;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:10px;padding:13px;color:var(--text2);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s"
-                onmouseover="this.style.borderColor='rgba(26,188,188,0.4)'"
-                onmouseout="this.style.borderColor='rgba(255,255,255,0.12)'">
-            <i class="ti ti-database-import" style="color:var(--teal)"></i>
-            Ripristina dati da backup (dopo un deploy)
-            <i class="ti ti-chevron-down" id="restore-chevron" style="margin-left:auto;transition:transform .2s"></i>
-        </button>
-        <div id="restore-panel" style="display:none;background:rgba(15,32,53,0.8);border:1px solid rgba(26,188,188,0.2);border-top:none;border-radius:0 0 10px 10px;padding:20px">
-            <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
-                <i class="ti ti-info-circle" style="color:var(--teal)"></i>
-                Dopo ogni deploy su Render il database viene azzerato.
-                Carica il file <code style="color:var(--teal)">.json</code> esportato in precedenza per ripristinare
-                fornitori, task e credenziali di accesso.
-            </p>
-            <form method="post" action="/restore-backup" enctype="multipart/form-data">
-                <input type="file" name="backup_file" accept=".json" required
-                       style="margin-bottom:12px;color:var(--teal)">
-                <button type="submit"
-                        style="width:100%;background:var(--teal);color:#0B1829;border:none;border-radius:6px;padding:10px;font-size:13px;font-weight:600;cursor:pointer">
-                    <i class="ti ti-upload"></i> Importa e ripristina accesso
-                </button>
-            </form>
-        </div>
-    </div>
-</div>
-<script>
-function toggleRestore() {
-    var p = document.getElementById('restore-panel');
-    var c = document.getElementById('restore-chevron');
-    if (p.style.display === 'none') {
-        p.style.display = 'block';
-        c.style.transform = 'rotate(180deg)';
-    } else {
-        p.style.display = 'none';
-        c.style.transform = 'rotate(0deg)';
-    }
-}
-</script>
+
 <div class="footer">© 2025 <a href="https://ichnobyte.it" target="_blank">Ichnobyte S.R.L.</a> — P.IVA 03954630921 — <a href="https://ichnobyte.it/privacy-policy">Privacy Policy</a></div>
 </body>""")
 
@@ -660,7 +620,7 @@ def enterprise_dashboard():
 
     return render_template_string(BASE_CSS + f"""
 <body>
-{nav('enterprise', name, '<a href="/enterprise/fornitori/aggiungi">+ Fornitore</a> <a href="/enterprise/export" style="color:#68d391">⬇ Esporta</a> <a href="/enterprise/import" style="color:#f6ad55">⬆ Importa</a>')}
+{nav('enterprise', name, '<a href="/enterprise/fornitori/aggiungi">+ Fornitore</a>')}
 <div class="page">
     {'<div class="alert alert-success" style="margin-top:20px"><i class="ti ti-database-import"></i> Backup ripristinato con successo — bentornato!</div>' if request.args.get('restored') else ''}
     <div class="page-header" style="margin-top:12px">
