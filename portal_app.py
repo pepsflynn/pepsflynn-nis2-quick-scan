@@ -151,13 +151,19 @@ BASE_CSS = """
 html{scroll-behavior:smooth}
 body{
   font-family:'Inter',system-ui,sans-serif;
-  background:var(--navy);
-  background-image:
-    radial-gradient(ellipse at 15% 40%, rgba(26,188,188,0.10) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 15%, rgba(24,95,165,0.10) 0%, transparent 50%),
-    radial-gradient(ellipse at 60% 85%, rgba(26,188,188,0.05) 0%, transparent 45%);
-  color:var(--text);min-height:100vh;font-size:14px;line-height:1.6
+  background-color:var(--navy);
+  background-image:url('/logo-sfondo.png');
+  background-size:cover;
+  background-position:center center;
+  background-attachment:fixed;
+  background-repeat:no-repeat;
+  color:var(--text);min-height:100vh;font-size:14px;line-height:1.6;position:relative
 }
+body::before{
+  content:"";position:fixed;top:0;left:0;width:100%;height:100%;
+  background:rgba(10,22,40,0.87);z-index:0;pointer-events:none
+}
+.topbar,.page,.page-sm,.footer{position:relative;z-index:1}
 a{color:var(--teal);text-decoration:none;transition:opacity .15s}
 a:hover{opacity:.8}
 
@@ -277,7 +283,22 @@ LOGO_SVG = """<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.
 
 def nav(role='', user_name='', extra_links=''):
     logout_url = '/enterprise/logout' if role == 'enterprise' else '/supplier/logout' if role == 'supplier' else '/'
-    role_label = {'enterprise': 'Enterprise', 'supplier': 'Fornitore'}.get(role, '')
+
+    # Import/export sempre visibili per utenti enterprise
+    ent_tools = ''
+    if role == 'enterprise':
+        ent_tools = (
+            '<a href="/enterprise/export" title="Esporta backup JSON" '
+            'style="display:inline-flex;align-items:center;gap:4px;background:rgba(16,185,129,0.12);'
+            'border:1px solid rgba(16,185,129,0.3);border-radius:5px;padding:5px 11px;'
+            'color:#6EE7B7;font-size:12px;font-weight:500">'
+            '<i class="ti ti-download" style="font-size:13px"></i> Esporta</a> '
+            '<a href="/enterprise/import" title="Importa backup JSON" '
+            'style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.10);'
+            'border:1px solid rgba(245,158,11,0.3);border-radius:5px;padding:5px 11px;'
+            'color:#FCD34D;font-size:12px;font-weight:500">'
+            '<i class="ti ti-upload" style="font-size:13px"></i> Importa</a> '
+        )
 
     user_html = ''
     if user_name:
@@ -297,8 +318,10 @@ def nav(role='', user_name='', extra_links=''):
         '<span class="logo-badge">NIS2 PORTAL</span>'
         '</a>'
         '<div class="topbar-links">'
-        + extra_links +
-        user_html +
+        + ent_tools
+        + extra_links
+        + ' '
+        + user_html +
         '</div>'
         '</div>'
     )
@@ -355,6 +378,22 @@ def landing():
         <i class="ti ti-shield-check" style="font-size:48px;color:#63b3ed"></i>
         <h1 style="margin-top:12px">NIS2 Compliance Portal</h1>
         <p style="margin-top:6px;font-size:15px">Seleziona il tuo profilo per accedere allo strumento appropriato</p>
+    </div>
+
+    <!-- Banner import sempre visibile -->
+    <div id="restore-banner" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <i class="ti ti-database-import" style="font-size:22px;color:#FCD34D;flex-shrink:0"></i>
+        <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:#FCD34D;margin-bottom:2px">Deploy effettuato? Ripristina i tuoi dati</div>
+            <div style="font-size:12px;color:var(--text2)">Carica il file <code>.json</code> esportato prima del deploy per ripristinare fornitori, task e credenziali</div>
+        </div>
+        <form method="post" action="/restore-backup" enctype="multipart/form-data" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <input type="file" name="backup_file" accept=".json" required
+                   style="font-size:12px;background:transparent;border:1px solid rgba(245,158,11,0.3);border-radius:5px;padding:5px 8px;color:var(--teal);max-width:200px">
+            <button type="submit" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:5px;padding:7px 14px;color:#FCD34D;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+                <i class="ti ti-upload"></i> Ripristina accesso
+            </button>
+        </form>
     </div>
 
     <!-- CARD A: Soggetto NIS2 -->
