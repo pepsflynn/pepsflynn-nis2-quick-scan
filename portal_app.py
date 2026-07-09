@@ -1507,8 +1507,12 @@ def api_send_otp():
     if not email or '@' not in email:
         return jsonify({"success":False,"message":"Email non valida"})
 
-    # Rate limiting
-    existing = otp_get(email)
+    # Rate limiting (protetto da eccezioni DB)
+    try:
+        existing = otp_get(email)
+    except Exception as e:
+        print(f"[OTP] otp_get error (ignorato): {e}")
+        existing = None
     if existing and existing.get('req_count',0) >= 3 and time.time() - existing.get('req_time',0) < 900:
         return jsonify({"success":False,"message":"Troppi tentativi. Attendi 15 minuti."})
 

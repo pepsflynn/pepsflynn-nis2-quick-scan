@@ -500,9 +500,12 @@ def otp_save(email, code, expiry, req_count, req_time):
                    (email, code, expiry, req_count, req_time))
 
 def otp_get(email):
-    with get_db() as db:
-        row = db.execute("SELECT * FROM otp_codes WHERE email=?", (email,)).fetchone()
-        return dict(row) if row else None
+    try:
+        with get_db() as db:
+            row = db.execute("SELECT * FROM otp_codes WHERE email=?", (email,)).fetchone()
+            return dict(row) if row else None
+    except Exception:
+        return None
 
 def otp_increment_attempts(email):
     with get_db() as db:
@@ -515,5 +518,8 @@ def otp_delete(email):
 def otp_cleanup():
     """Rimuove codici scaduti — chiamato ad ogni verify."""
     import time as _time
-    with get_db() as db:
-        db.execute("DELETE FROM otp_codes WHERE expiry < ?", (_time.time(),))
+    try:
+        with get_db() as db:
+            db.execute("DELETE FROM otp_codes WHERE expiry < ?", (_time.time(),))
+    except Exception:
+        pass
