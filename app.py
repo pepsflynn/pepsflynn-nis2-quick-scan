@@ -1,7 +1,5 @@
 from flask import Flask, render_template_string, request, jsonify
 from company_lookup import lookup_company
-from db import init_db, otp_save, otp_get, otp_increment_attempts, otp_delete, otp_cleanup
-init_db()
 from domain_scanner import scan_domain
 from scoring import calculate_nis2_score
 import random
@@ -16,7 +14,7 @@ from email.mime.text import MIMEText
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = 'nis2-web-version-2026'
 
-# OTP stored in SQLite — see db.py
+verification_codes = {}
 
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>

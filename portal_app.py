@@ -7,6 +7,7 @@ from flask import (Flask, render_template_string, request, jsonify,
                    session, redirect, url_for, flash)
 from db import (init_db, create_enterprise, get_enterprise_by_email,
                 export_enterprise_data, import_enterprise_data,
+                otp_save, otp_get, otp_increment_attempts, otp_delete, otp_cleanup,
                 get_enterprise_by_id, verify_password,
                 create_supplier, get_suppliers_by_enterprise,
                 get_supplier_by_id, get_supplier_by_email,
@@ -28,7 +29,7 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'nis2-portal-ichnobyte-2025')
 
 init_db()
-verification_codes = {}
+# OTP persisted in SQLite via db.py
 
 # ═══════════════════════════════════════════════════════════════
 # QUESTIONARIO NIS2 FORNITORE — 19 domande in 9 sezioni
@@ -1505,40 +1506,45 @@ def api_send_otp():
     email = request.json.get('email','').strip().lower()
     if not email or '@' not in email:
         return jsonify({"success":False,"message":"Email non valida"})
-    existing = verification_codes.get(email,{})
-    if isinstance(existing,dict) and existing.get('req_count',0)>=3 and time.time()-existing.get('req_time',0)<900:
+    existing = otp_get(email)
+    if existing and existing.get('req_count',0)>=3 and time.time()-existing.get('req_time',0)<900:
         return jsonify({"success":False,"message":"Troppi tentativi. Attendi 15 minuti."})
-    code = ''.join(random.choices(string.digits, k=6))
-    verification_codes[email] = {"code":code,"expiry":time.time()+600,"attempts":0,"req_count":(existing.get('req_count',0)+1 if isinstance(existing,dict) else 1),"req_time":time.time()}
+    code    = ''.join(random.choices(string.digits, k=6))
+    req_cnt = (existing.get('req_count',0)+1) if existing else 1
+    otp_save(email, code, time.time()+600, req_cnt, time.time())
     api_configured = bool(os.environ.get('BREVO_API_KEY') or os.environ.get('SENDGRID_API_KEY'))
     if api_configured:
         try:
             _send_email_api(email, code)
             return jsonify({"success":True,"message":f"Codice inviato a {email}. Controlla la casella (e lo spam)."})
         except Exception as e:
-            print(f"[OTP] Errore API: {e}")
+            print(f"[OTP] Errore: {e}")
             return jsonify({"success":False,"message":f"Errore invio: {str(e)[:80]}"})
     print(f"[DEV] OTP per {email}: {code}")
     return jsonify({"success":True,"message":f"[DEV] Codice: {code}","dev_code":code})
 
-@app.route('/api/verify-otp', methods=['POST'])
+
 def api_verify_otp():
     email = request.json.get('email','').strip().lower()
     code  = request.json.get('code','').strip()
-    stored = verification_codes.get(email)
-    if not isinstance(stored,dict):
-        return jsonify({"valid":False,"message":"Nessun codice attivo. Richiedi un nuovo codice."})
+    otp_cleanup()
+    stored = otp_get(email)
+    if not stored:
+        return jsonify({"valid":False,"message":"Nessun codice attivo. Clicca 'Invia codice OTP' per riceverne uno nuovo."})
     if time.time() > stored.get('expiry',0):
-        verification_codes.pop(email,None)
-        return jsonify({"valid":False,"message":"Codice scaduto. Richiedi un nuovo codice."})
-    stored['attempts'] = stored.get('attempts',0)+1
-    if stored['attempts'] > 5:
-        verification_codes.pop(email,None)
+        otp_delete(email)
+        return jsonify({"valid":False,"message":"Codice scaduto (10 min). Richiedi un nuovo codice."})
+    otp_increment_attempts(email)
+    stored = otp_get(email)
+    if stored and stored.get('attempts',0) > 5:
+        otp_delete(email)
         return jsonify({"valid":False,"message":"Troppi tentativi. Richiedi un nuovo codice."})
-    if stored['code'] == code:
-        verification_codes.pop(email,None)
+    if stored and stored.get('code') == code:
+        otp_delete(email)
         return jsonify({"valid":True,"message":"Email verificata correttamente."})
-    return jsonify({"valid":False,"message":f"Codice non corretto. Tentativi rimanenti: {5-stored['attempts']}"})
+    remaining = 5 - (stored.get('attempts',0) if stored else 5)
+    return jsonify({"valid":False,"message":f"Codice non corretto. Tentativi rimanenti: {remaining}"})
+
 
 @app.route('/api/verify-dns', methods=['POST'])
 def api_verify_dns():
