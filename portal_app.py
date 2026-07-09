@@ -1507,11 +1507,10 @@ def api_send_otp():
     if not email or '@' not in email:
         return jsonify({"success":False,"message":"Email non valida"})
 
-    # Rate limiting (protetto da eccezioni DB)
+    # Rate limiting (protetto da errori DB)
     try:
         existing = otp_get(email)
-    except Exception as e:
-        print(f"[OTP] otp_get error (ignorato): {e}")
+    except Exception:
         existing = None
     if existing and existing.get('req_count',0) >= 3 and time.time() - existing.get('req_time',0) < 900:
         return jsonify({"success":False,"message":"Troppi tentativi. Attendi 15 minuti."})
@@ -1520,18 +1519,12 @@ def api_send_otp():
     expiry  = time.time() + 600
     req_cnt = (existing.get('req_count',0) + 1) if existing else 1
 
-    # Salva su DB (persistente tra restart)
     try:
         otp_save(email, code, expiry, req_cnt, time.time())
-        print(f"[OTP] Salvato su DB: email={email} code={code} expiry={expiry:.0f}")
+        print(f"[OTP] Salvato: email={email} code={code}")
     except Exception as e:
-        print(f"[OTP] ERRORE salvataggio DB: {e}")
-        # Fallback a memoria
-        _otp_memory[email] = {"code": code, "expiry": expiry}
-        print(f"[OTP] Salvato in memoria (fallback)")
-
-    # Salva sempre anche in memoria (stesso worker)
-    _otp_memory[email] = {"code": code, "expiry": expiry}
+        print(f"[OTP] ERRORE salvataggio: {e}")
+        return jsonify({"success":False,"message":"Errore interno. Riprova."})
 
     api_configured = bool(os.environ.get('BREVO_API_KEY') or os.environ.get('SENDGRID_API_KEY'))
     if api_configured:
@@ -1539,7 +1532,7 @@ def api_send_otp():
             _send_email_api(email, code)
             return jsonify({"success":True,"message":f"Codice inviato a {email}. Controlla la casella (e lo spam)."})
         except Exception as e:
-            print(f"[OTP] Errore email API: {e}")
+            print(f"[OTP] Errore invio email: {e}")
             return jsonify({"success":False,"message":f"Errore invio: {str(e)[:80]}"})
     print(f"[DEV] OTP per {email}: {code}")
     return jsonify({"success":True,"message":f"[DEV] Codice: {code}","dev_code":code})
@@ -1549,29 +1542,14 @@ def api_send_otp():
 def api_verify_otp():
     email = request.json.get('email','').strip().lower()
     code  = request.json.get('code','').strip()
-    print(f"[OTP] Verifica richiesta: email={email} code={code}")
+    print(f"[OTP] Verifica: email={email} code={code}")
 
-    # 1. Controlla memoria (stesso worker, più affidabile)
-    mem = _otp_memory.get(email)
-    print(f"[OTP] Memoria: {mem}")
-    if mem and time.time() <= mem.get('expiry', 0):
-        if mem.get('code') == code:
-            del _otp_memory[email]
-            try: otp_delete(email)
-            except: pass
-            print(f"[OTP] Verificato da MEMORIA: OK")
-            return jsonify({"valid":True,"message":"Email verificata correttamente."})
-        else:
-            print(f"[OTP] Codice errato in memoria. Atteso={mem.get('code')} Ricevuto={code}")
-            return jsonify({"valid":False,"message":"Codice non corretto."})
-
-    # 2. Controlla DB (sopravvive ai restart)
     try:
         otp_cleanup()
         stored = otp_get(email)
-        print(f"[OTP] DB result: {stored}")
+        print(f"[OTP] DB stored: {stored}")
     except Exception as e:
-        print(f"[OTP] ERRORE DB: {e}")
+        print(f"[OTP] ERRORE DB lookup: {e}")
         stored = None
 
     if not stored:
@@ -1580,16 +1558,14 @@ def api_verify_otp():
         try: otp_delete(email)
         except: pass
         return jsonify({"valid":False,"message":"Codice scaduto (10 min). Richiedi un nuovo codice."})
-
     if stored.get('code') == code:
         try: otp_delete(email)
         except: pass
-        _otp_memory.pop(email, None)
-        print(f"[OTP] Verificato da DB: OK")
+        print(f"[OTP] Verificato OK")
         return jsonify({"valid":True,"message":"Email verificata correttamente."})
 
-    print(f"[OTP] Codice errato in DB. Atteso={stored.get('code')} Ricevuto={code}")
-    return jsonify({"valid":False,"message":"Codice non corretto."})
+    print(f"[OTP] Codice errato. Atteso={stored.get('code')} Ricevuto={code}")
+    return jsonify({"valid":False,"message":"Codice non corretto. Riprova."})
 
 
 
