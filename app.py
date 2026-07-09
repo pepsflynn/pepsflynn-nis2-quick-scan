@@ -244,7 +244,7 @@ HTML_TEMPLATE = r"""
                     <input type="radio" name="is_supplier" value="si" onchange="computeNIS2Category()" style="accent-color:#63b3ed;"> Sì, sono fornitore di soggetti NIS2</label>
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 14px;font-size:13px;color:#cbd5e0;">
                     <input type="radio" name="is_supplier" value="forse" onchange="computeNIS2Category()" style="accent-color:#63b3ed;"> Potrei esserlo, non sono sicuro</label>
-                <label style="display:flex;align-items:center;gap=6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 14px;font-size:13px;color:#cbd5e0;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 14px;font-size:13px;color:#cbd5e0;">
                     <input type="radio" name="is_supplier" value="no" onchange="computeNIS2Category()" style="accent-color:#63b3ed;"> No</label>
             </div>
             <div id="nis2-badge" style="display:none; border-radius:8px; padding:12px 14px; margin:10px 0 14px;"></div>
@@ -280,13 +280,13 @@ HTML_TEMPLATE = r"""
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                         <input type="text" id="otp-code" placeholder="000000"
                                style="flex:1;min-width:160px;letter-spacing:10px;font-size:28px;font-weight:700;text-align:center;padding:12px;border-radius:8px;"
-                               maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')">
+                               maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
                         <button class="btn-small" onclick="verifyOTP()" id="btn-verify-otp"
                                 style="padding:14px 24px;font-size:14px;white-space:nowrap;">✅ Verifica codice</button>
                     </div>
                     <div id="otp-verify-status" style="font-size:13px;padding:10px 14px;border-radius:6px;margin-top:10px;min-height:20px;"></div>
                     <p style="font-size:11px;color:#718096;margin-top:10px;">
-                        Non hai ricevuto l\'email? Controlla lo spam oppure
+                        Non hai ricevuto l'email? Controlla lo spam oppure
                         <a href="#" onclick="sendOTP();return false;" style="color:#63b3ed;">invia di nuovo</a>.
                     </p>
                 </div>
@@ -323,8 +323,12 @@ HTML_TEMPLATE = r"""
     </div>
 
     <script>
+        // ============================================================
+        // JAVASCRIPT COMPLETO UNIFICATO (NESSUN DUPLICATO)
+        // ============================================================
         var dnsVerified = false;
         var otpVerified = false;
+        var _otpTimer = null;
 
         function isValidItalianVat(vat) {
             if (vat.length !== 11) return false;
@@ -414,13 +418,11 @@ HTML_TEMPLATE = r"""
             }
         }
 
-        // autoSelectAteco: fills select from lookup result, then recomputes NIS2 category
         function autoSelectAteco(code) {
             if (!code) return false;
             var clean = code.replace(/\./g,'');
             var sel = document.getElementById('ateco');
             if (sel.value) return { found: true, code: code, label: sel.options[sel.selectedIndex].text };
-            // Find best matching option in the new grouped select
             var best = null;
             for (var i = 0; i < sel.options.length; i++) {
                 var optVal = sel.options[i].value.replace(/\./g,'');
@@ -453,7 +455,7 @@ HTML_TEMPLATE = r"""
             return true;
         }
 
-        // ── NIS2 category helpers ─────────────────────────────────────
+        // NIS2 category helpers
         var ANNEX_I  = ['05','06','07','08','09','19','35','36','37','49','50','51','52','61','62','63','64','65','66','84','86','87','88'];
         var ANNEX_II = ['10','11','13','14','20','21','22','24','25','26','27','28','29','30','38','39','53','58','59','60','72','73'];
 
@@ -495,7 +497,6 @@ HTML_TEMPLATE = r"""
             badge.style.display='block';
             badge.style.background=st.bg; badge.style.border='1px solid '+st.border;
             badge.innerHTML = st.icon+' Categoria NIS2 rilevata: <strong style="color:'+st.color+';">'+cat+'</strong> &mdash; <span style="color:#a0aec0;font-size:12px;">'+desc+'</span>';
-            // Check supplier override
             var supplierEl = document.querySelector('input[name="is_supplier"]:checked');
             var supplierVal = supplierEl ? supplierEl.value : 'no';
             window._isSupplier = (supplierVal === 'si' || supplierVal === 'forse');
@@ -516,7 +517,7 @@ HTML_TEMPLATE = r"""
             if (!rev && cat !== 'Fornitore NIS2') badge.innerHTML += '<br><span style="color:#718096;font-size:11px;margin-top:4px;display:block;">⚠️ Aggiungere la fascia fatturato per una classificazione più precisa</span>';
         }
 
-        // ── Questionnaire catalog ─────────────────────────────────
+        // Questionnaire catalog
         var Q_CATALOG = {
             "Essenziale": [
                 { id:"q1",  label:"Registrazione ACN + Punto di Contatto formale designato",         art:"Art. 7 D.Lgs. 138/2024",  badge:"OBBLIGO LEGALE", bc:"#fc8181",
@@ -647,7 +648,6 @@ HTML_TEMPLATE = r"""
         }
 
         function showPortableContact() { alert('Contatta il team Ichnobyte per la versione portable.'); }
-        function checkBoth() { if (otpVerified) { document.getElementById("goto-step3").disabled = false; } }
 
         function checkEmailDomain() {
             var email = document.getElementById("email").value.trim();
@@ -655,7 +655,6 @@ HTML_TEMPLATE = r"""
             var warn = document.getElementById("email-domain-warning");
             if (!email || !siteDomain || email.indexOf('@') < 0) { warn.style.display = 'none'; return; }
             var emailDomain = email.split('@')[1] || '';
-            // considera match anche se il dominio email è un sottodominio del dominio sito o viceversa
             var match = emailDomain === siteDomain ||
                         emailDomain.endsWith('.' + siteDomain) ||
                         siteDomain.endsWith('.' + emailDomain);
@@ -692,16 +691,13 @@ HTML_TEMPLATE = r"""
                     h += " &nbsp;(" + r.score + " pt)</div>";
                     h += "<table style='margin-top:4px;font-size:13px;'>";
 
-                    // MX
                     h += "<tr><td><strong>MX</strong> &mdash; server di posta</td>";
                     h += "<td class='" + (r.mx_valid?"ok":"error") + "'>" + (r.mx_valid ? "✅ OK (" + r.mx_count + " record)" : "❌ Assente") + "</td></tr>";
 
-                    // SPF
                     var spfClass = !r.spf_valid ? "error" : r.spf_strict ? "ok" : "warning";
                     var spfLabel = !r.spf_valid ? "❌ Assente" : (r.spf_strict ? "✅ OK (strict -all)" : "⚠️ Presente (~all, permissivo)");
                     h += "<tr><td><strong>SPF</strong> &mdash; mittenti autorizzati</td><td class='" + spfClass + "'>" + spfLabel + "</td></tr>";
 
-                    // DMARC
                     var dmarcClass = !r.dmarc_valid ? "error" : r.dmarc_policy === "reject" ? "ok" : r.dmarc_policy === "quarantine" ? "warning" : "warning";
                     var dmarcLabel = !r.dmarc_valid ? "❌ Assente" :
                         "✅ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : " (no reporting)");
@@ -709,74 +705,23 @@ HTML_TEMPLATE = r"""
                     else if (r.dmarc_valid && r.dmarc_policy !== "reject") dmarcLabel = "⚠️ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : "");
                     h += "<tr><td><strong>DMARC</strong> &mdash; anti-spoofing</td><td class='" + dmarcClass + "'>" + dmarcLabel + "</td></tr>";
 
-                    // DKIM
                     var dkimLabel = r.dkim_verified
                         ? "✅ OK (selettore: <em>" + r.dkim_selector + "</em>)"
                         : "❌ Non rilevato (selettori comuni verificati)";
                     h += "<tr><td><strong>DKIM</strong> &mdash; firma digitale</td><td class='" + (r.dkim_verified?"ok":"error") + "'>" + dkimLabel + "</td></tr>";
 
-                    // MTA-STS
                     h += "<tr><td><strong>MTA-STS</strong> &mdash; cifratura SMTP</td>";
                     h += "<td class='" + (r.mta_sts?"ok":"warning") + "'>" + (r.mta_sts ? "✅ Abilitato" : "⚠️ Non configurato") + "</td></tr>";
 
                     h += "</table>";
                     document.getElementById("dns-result").innerHTML = h;
-                    dnsVerified = true; checkBoth();
+                    dnsVerified = true;
+                    checkBoth();
                 }
-                btn.disabled = false; btn.textContent = "Verifica DNS";
+                btn.disabled = false; btn.textContent = "🔍 Avvia verifica DNS";
             });
         }
 
-        function sendOTP() {
-            var email = document.getElementById("email").value.trim();
-            if (!email) { alert("Inserisci l\'indirizzo email aziendale"); return; }
-            checkEmailDomain();
-            var btn = document.getElementById("btn-otp");
-            var status = document.getElementById("otp-status");
-            btn.disabled = true; btn.textContent = "Invio in corso...";
-            if (status) { status.style.display='block'; status.style.background='rgba(255,255,255,0.04)'; status.style.border='1px solid rgba(255,255,255,0.1)'; status.style.color='#a0aec0'; status.innerHTML='⏳ Invio codice OTP a <strong>' + email + '</strong>...'; }
-            fetch("/api/send-otp", {
-                method:"POST", headers:{"Content-Type":"application/json"},
-                body: JSON.stringify({email: email})
-            })
-            .then(function(r){ return r.json(); })
-            .then(function(d) {
-                btn.disabled = false; btn.textContent = "Invia codice";
-                if (d.success) {
-                    var isDevMode = !!d.dev_code;
-                    if (status) {
-                        status.style.background = isDevMode ? 'rgba(246,173,85,0.08)' : 'rgba(56,161,105,0.08)';
-                        status.style.border = isDevMode ? '1px solid rgba(246,173,85,0.3)' : '1px solid rgba(56,161,105,0.3)';
-                        status.style.color = isDevMode ? '#f6ad55' : '#68d391';
-                        status.innerHTML = isDevMode
-                            ? '⚠️ <strong>Modalità sviluppo</strong> — SMTP non configurato. ' + d.message
-                            : '✅ ' + d.message + ' Il codice scade in <strong>10 minuti</strong>.';
-                        if (isDevMode) {
-                            // Auto-compila il campo codice in dev mode
-                            var otpField = document.getElementById("otp-code");
-                            if (otpField) otpField.value = d.dev_code;
-                        }
-                    }
-                    // Focus automatico sul campo codice
-                    setTimeout(function(){
-                        var f = document.getElementById("otp-code");
-                        if (f) { f.value = ""; f.focus(); }
-                    }, 300);
-                    // Avvia countdown 10 minuti
-                    startOtpCountdown(600);
-                } else {
-                    if (status) {
-                        status.style.background='rgba(252,129,129,0.08)';
-                        status.style.border='1px solid rgba(252,129,129,0.3)';
-                        status.style.color='#fc8181';
-                        status.innerHTML = '❌ ' + (d.message || "Errore nell\'invio");
-                    }
-                }
-            })
-            .catch(function(){ btn.disabled=false; btn.textContent="Invia codice"; alert("Errore di rete"); });
-        }
-
-        var _otpTimer = null;
         function startOtpCountdown(seconds) {
             if (_otpTimer) clearInterval(_otpTimer);
             var el = document.getElementById("otp-countdown");
@@ -796,30 +741,88 @@ HTML_TEMPLATE = r"""
             _otpTimer = setInterval(tick, 1000);
         }
 
+        function sendOTP() {
+            var email = document.getElementById("email").value.trim();
+            if (!email) { alert("Inserisci l'indirizzo email aziendale"); return; }
+            checkEmailDomain();
+            var btn = document.getElementById("btn-otp");
+            var status = document.getElementById("otp-status");
+            btn.disabled = true; btn.textContent = "Invio in corso...";
+            if (status) { 
+                status.style.display = 'block'; 
+                status.style.background = 'rgba(255,255,255,0.04)'; 
+                status.style.border = '1px solid rgba(255,255,255,0.1)'; 
+                status.style.color = '#a0aec0'; 
+                status.innerHTML = '⏳ Invio codice OTP a <strong>' + email + '</strong>...'; 
+            }
+            fetch("/api/send-otp", {
+                method: "POST", 
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({email: email})
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(d) {
+                btn.disabled = false; 
+                btn.textContent = "📧 Invia codice OTP";
+                if (d.success) {
+                    var isDevMode = !!d.dev_code;
+                    if (status) {
+                        status.style.background = isDevMode ? 'rgba(246,173,85,0.08)' : 'rgba(56,161,105,0.08)';
+                        status.style.border = isDevMode ? '1px solid rgba(246,173,85,0.3)' : '1px solid rgba(56,161,105,0.3)';
+                        status.style.color = isDevMode ? '#f6ad55' : '#68d391';
+                        status.innerHTML = isDevMode
+                            ? '⚠️ <strong>Modalità sviluppo</strong> — SMTP non configurato. ' + d.message
+                            : '✅ ' + d.message + ' Il codice scade in <strong>10 minuti</strong>.';
+                        if (isDevMode) {
+                            var otpField = document.getElementById("otp-code");
+                            if (otpField) otpField.value = d.dev_code;
+                        }
+                    }
+                    setTimeout(function(){
+                        var f = document.getElementById("otp-code");
+                        if (f) { f.value = ""; f.focus(); }
+                    }, 300);
+                    startOtpCountdown(600);
+                } else {
+                    if (status) {
+                        status.style.background = 'rgba(252,129,129,0.08)';
+                        status.style.border = '1px solid rgba(252,129,129,0.3)';
+                        status.style.color = '#fc8181';
+                        status.innerHTML = '❌ ' + (d.message || "Errore nell'invio");
+                    }
+                }
+            })
+            .catch(function(){ 
+                btn.disabled = false; 
+                btn.textContent = "📧 Invia codice OTP"; 
+                alert("Errore di rete"); 
+            });
+        }
+
         function verifyOTP() {
-            var email  = document.getElementById("email").value.trim();
-            var code   = document.getElementById("otp-code").value.trim();
-            var btn    = document.getElementById("btn-verify-otp");
+            var email = document.getElementById("email").value.trim();
+            var code = document.getElementById("otp-code").value.trim();
+            var btn = document.getElementById("btn-verify-otp");
             var status = document.getElementById("otp-verify-status");
 
             if (!code || code.length < 6) {
-                status.style.background='rgba(246,173,85,0.1)';
-                status.style.border='1px solid rgba(246,173,85,0.4)';
-                status.style.color='#f6ad55';
-                status.innerHTML='⚠️ Inserisci il codice a 6 cifre ricevuto via email.';
+                status.style.background = 'rgba(246,173,85,0.1)';
+                status.style.border = '1px solid rgba(246,173,85,0.4)';
+                status.style.color = '#f6ad55';
+                status.innerHTML = '⚠️ Inserisci il codice a 6 cifre ricevuto via email.';
                 return;
             }
 
             btn.disabled = true;
             btn.textContent = "Verifica in corso...";
-            status.style.background='rgba(255,255,255,0.04)';
-            status.style.border='1px solid rgba(255,255,255,0.1)';
-            status.style.color='#a0aec0';
+            status.style.background = 'rgba(255,255,255,0.04)';
+            status.style.border = '1px solid rgba(255,255,255,0.1)';
+            status.style.color = '#a0aec0';
             status.innerHTML = '⏳ Verifica in corso...';
 
             fetch("/api/verify-otp", {
                 method: "POST",
-                headers: {"Content-Type":"application/json"},
+                headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({email: email, code: code})
             })
             .then(function(r) {
@@ -828,14 +831,17 @@ HTML_TEMPLATE = r"""
             })
             .then(function(d) {
                 btn.disabled = false;
-                btn.textContent = "✅ Verifica";
+                btn.textContent = "✅ Verifica codice";
                 if (d.valid) {
                     if (_otpTimer) clearInterval(_otpTimer);
-                    status.style.background='rgba(56,161,105,0.12)';
-                    status.style.border='1px solid rgba(56,161,105,0.5)';
-                    status.style.color='#68d391';
-                    status.innerHTML='✅ <strong>Email verificata correttamente.</strong> Ora esegui la verifica DNS.';
+                    status.style.background = 'rgba(56,161,105,0.12)';
+                    status.style.border = '1px solid rgba(56,161,105,0.5)';
+                    status.style.color = '#68d391';
+                    status.innerHTML = '✅ <strong>Email verificata correttamente.</strong> Ora esegui la verifica DNS.';
                     otpVerified = true;
+                    // Pulisce il vecchio status OTP
+                    var oldStatus = document.getElementById("otp-status");
+                    if (oldStatus) oldStatus.innerHTML = '';
                     checkBoth();
                     // Mostra sezione DNS e avvia automaticamente
                     var dnsSec = document.getElementById("dns-section");
@@ -848,132 +854,27 @@ HTML_TEMPLATE = r"""
                     // DNS parte in background automaticamente
                     setTimeout(function(){ verifyDNS(); }, 800);
                 } else {
-                    status.style.background='rgba(252,129,129,0.08)';
-                    status.style.border='1px solid rgba(252,129,129,0.4)';
-                    status.style.color='#fc8181';
-                    status.innerHTML='❌ ' + (d.message || "Codice non corretto. Riprova.");
-                    btn.textContent = "✅ Verifica";
+                    status.style.background = 'rgba(252,129,129,0.08)';
+                    status.style.border = '1px solid rgba(252,129,129,0.4)';
+                    status.style.color = '#fc8181';
+                    status.innerHTML = '❌ ' + (d.message || "Codice non corretto. Riprova.");
+                    btn.textContent = "✅ Verifica codice";
                 }
             })
             .catch(function(err) {
                 btn.disabled = false;
-                btn.textContent = "✅ Verifica";
-                status.style.background='rgba(252,129,129,0.08)';
-                status.style.border='1px solid rgba(252,129,129,0.4)';
-                status.style.color='#fc8181';
-                status.innerHTML='❌ Errore di rete: ' + err.message + '. Riprova.';
+                btn.textContent = "✅ Verifica codice";
+                status.style.background = 'rgba(252,129,129,0.08)';
+                status.style.border = '1px solid rgba(252,129,129,0.4)';
+                status.style.color = '#fc8181';
+                status.innerHTML = '❌ Errore di rete: ' + err.message + '. Riprova.';
             });
         }
 
-        function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
-
-        function checkEmailDomain() {
-            var email = document.getElementById("email").value.trim();
-            var siteDomain = document.getElementById("domain").value.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-            var warn = document.getElementById("email-domain-warning");
-            if (!email || !siteDomain || email.indexOf('@') < 0) { warn.style.display = 'none'; return; }
-            var emailDomain = email.split('@')[1] || '';
-            // considera match anche se il dominio email è un sottodominio del dominio sito o viceversa
-            var match = emailDomain === siteDomain ||
-                        emailDomain.endsWith('.' + siteDomain) ||
-                        siteDomain.endsWith('.' + emailDomain);
-            if (!match) {
-                warn.style.display = 'block';
-                warn.style.background = 'rgba(246,224,94,0.1)';
-                warn.style.border = '1px solid rgba(246,224,94,0.4)';
-                warn.style.color = '#f6e05e';
-                warn.innerHTML = '⚠️ Il dominio email (<strong>' + emailDomain + '</strong>) è diverso dal dominio aziendale (<strong>' + siteDomain + '</strong>). I risultati DNS si riferiranno al dominio email.';
-            } else {
-                warn.style.display = 'block';
-                warn.style.background = 'rgba(56,161,105,0.1)';
-                warn.style.border = '1px solid rgba(56,161,105,0.3)';
-                warn.style.color = '#68d391';
-                warn.innerHTML = '✅ Dominio email coerente con il dominio aziendale.';
+        function checkBoth() { 
+            if (dnsVerified && otpVerified) {
+                document.getElementById("goto-step3").disabled = false;
             }
-        }
-
-        function verifyDNS() {
-            var email = document.getElementById("email").value.trim();
-            if (!email) { alert("Inserisci un indirizzo email"); return; }
-            checkEmailDomain();
-            var btn = document.getElementById("btn-dns");
-            btn.disabled = true; btn.textContent = "Analisi DNS...";
-            fetch("/api/verify-dns", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email}) })
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (d.success) {
-                    var r = d.results;
-                    var levelColor = r.level === "CONFORME" ? "#68d391" : r.level === "PARZIALE" ? "#f6e05e" : "#fc8181";
-                    var h = "<div style='margin:10px 0 8px;padding:8px 12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:13px;'>";
-                    h += "Dominio analizzato: <strong>" + r.domain + "</strong> &nbsp;|&nbsp; ";
-                    h += "Livello: <strong style='color:" + levelColor + ";'>" + r.level + "</strong>";
-                    h += " &nbsp;(" + r.score + " pt)</div>";
-                    h += "<table style='margin-top:4px;font-size:13px;'>";
-
-                    // MX
-                    h += "<tr><td><strong>MX</strong> &mdash; server di posta</td>";
-                    h += "<td class='" + (r.mx_valid?"ok":"error") + "'>" + (r.mx_valid ? "✅ OK (" + r.mx_count + " record)" : "❌ Assente") + "</td></tr>";
-
-                    // SPF
-                    var spfClass = !r.spf_valid ? "error" : r.spf_strict ? "ok" : "warning";
-                    var spfLabel = !r.spf_valid ? "❌ Assente" : (r.spf_strict ? "✅ OK (strict -all)" : "⚠️ Presente (~all, permissivo)");
-                    h += "<tr><td><strong>SPF</strong> &mdash; mittenti autorizzati</td><td class='" + spfClass + "'>" + spfLabel + "</td></tr>";
-
-                    // DMARC
-                    var dmarcClass = !r.dmarc_valid ? "error" : r.dmarc_policy === "reject" ? "ok" : r.dmarc_policy === "quarantine" ? "warning" : "warning";
-                    var dmarcLabel = !r.dmarc_valid ? "❌ Assente" :
-                        "✅ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : " (no reporting)");
-                    if (r.dmarc_policy === "reject") dmarcLabel = "✅ " + dmarcLabel.replace("✅ ","");
-                    else if (r.dmarc_valid && r.dmarc_policy !== "reject") dmarcLabel = "⚠️ policy: <strong>" + r.dmarc_policy + "</strong>" + (r.dmarc_rua ? " + reporting" : "");
-                    h += "<tr><td><strong>DMARC</strong> &mdash; anti-spoofing</td><td class='" + dmarcClass + "'>" + dmarcLabel + "</td></tr>";
-
-                    // DKIM
-                    var dkimLabel = r.dkim_verified
-                        ? "✅ OK (selettore: <em>" + r.dkim_selector + "</em>)"
-                        : "❌ Non rilevato (selettori comuni verificati)";
-                    h += "<tr><td><strong>DKIM</strong> &mdash; firma digitale</td><td class='" + (r.dkim_verified?"ok":"error") + "'>" + dkimLabel + "</td></tr>";
-
-                    // MTA-STS
-                    h += "<tr><td><strong>MTA-STS</strong> &mdash; cifratura SMTP</td>";
-                    h += "<td class='" + (r.mta_sts?"ok":"warning") + "'>" + (r.mta_sts ? "✅ Abilitato" : "⚠️ Non configurato") + "</td></tr>";
-
-                    h += "</table>";
-                    document.getElementById("dns-result").innerHTML = h;
-                    dnsVerified = true; checkBoth();
-                }
-                btn.disabled = false; btn.textContent = "Verifica DNS";
-            });
-        }
-
-        function sendOTP() {
-            var email = document.getElementById("email").value.trim();
-            if (!email) { alert("Inserisci l'email"); return; }
-            var btn = document.getElementById("btn-otp");
-            btn.disabled = true; btn.textContent = "Invio...";
-            fetch("/api/send-otp", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email}) })
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (d.success) {
-                    // otp-section handled by otp-verify-section;
-                    document.getElementById("otp-result").innerHTML = "<p class='ok'>Codice: <strong>" + d.code + "</strong></p>";
-                }
-                btn.disabled = false; btn.textContent = "Genera Codice";
-            });
-        }
-
-        function verifyOTP() {
-            var email = document.getElementById("email").value.trim(), code = document.getElementById("otp-code").value.trim();
-            if (!code) { alert("Inserisci il codice"); return; }
-            fetch("/api/verify-otp", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email: email, code: code}) })
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (d.verified) {
-                    otpVerified = true;
-                    document.getElementById("otp-result").innerHTML = "<span class='verified-badge'>Identita Confermata</span>";
-                    document.getElementById("otp-section").classList.add("hidden");
-                    checkBoth();
-                } else { document.getElementById("otp-result").innerHTML = "<p class='error'>Codice errato</p>"; }
-            });
         }
 
         function goToStep3() {
@@ -1020,7 +921,6 @@ HTML_TEMPLATE = r"""
             var cat = s.nis2_category ? s.nis2_category.category : "Fuori ambito";
             var catColor = cat === "Essenziale" ? "#fc8181" : cat === "Importante" ? "#f6e05e" : cat === "Fornitore NIS2" ? "#b794f4" : "#63b3ed";
 
-            // ---- HEADER REPORT ----
             var h = "<div class='card' style='text-align:center;'><h2>Report Quick Scan NIS2</h2>";
             h += "<div class='score-circle score-" + rc + "'>" + s.total_score + "/100</div>";
             h += "<p class='" + s.risk_color + "' style='font-size:18px;margin:5px 0;'>Rischio: <strong>" + s.overall_risk + "</strong></p>";
@@ -1030,7 +930,6 @@ HTML_TEMPLATE = r"""
             }
             h += "<p style='font-size:11px;color:#718096;margin-top:8px;'>☁️ Versione Cloud &mdash; 11 controlli automatici sul dominio pubblico</p></div>";
 
-            // ---- DATI AZIENDA ----
             h += "<div class='card'><h3>Dati Aziendali</h3><table>";
             h += "<tr><td>Azienda</td><td><strong>" + d.company.name + "</strong></td></tr>";
             h += "<tr><td>Settore ATECO</td><td>" + d.company.ateco + "</td></tr>";
@@ -1038,19 +937,16 @@ HTML_TEMPLATE = r"""
             h += "<tr><td>Responsabile sicurezza</td><td>" + (d.company.ciso || "N/D") + "</td></tr>";
             h += "<tr><td>Dominio analizzato</td><td>" + d.domain + "</td></tr></table></div>";
 
-            // ---- SCAN TECNICI raggruppati ----
             var groups = [
                 { label: "🌐 Sito web", keys: ["SSL", "Header", "CMS", "WAF", "HTTP", "File", "TLS", "Subdomain"] },
                 { label: "📧 Email / DNS",  keys: ["DMARC", "SPF", "DNSSEC"] }
             ];
             h += "<div class='card'><h3>Scan Tecnici Automatici</h3>";
 
-            // calcola totale tecnico
             var techTotal = 0, techMax = 0;
             for (var i = 0; i < s.details.length; i++) { techTotal += s.details[i].score; techMax += s.details[i].max; }
             h += "<p style='font-size:12px;color:#a0aec0;margin-bottom:10px;'>Punteggio tecnico: <strong>" + techTotal + "/" + techMax + "</strong></p>";
 
-            // raggruppa per prefisso area
             var webItems = [], emailItems = [], otherItems = [];
             var webKeys   = ["SSL", "Header", "CMS", "WAF", "HTTP", "File", "TLS", "Subdomain"];
             var emailKeys = ["MX", "DMARC", "SPF", "DKIM", "MTA", "DNSSEC"];
@@ -1082,7 +978,6 @@ HTML_TEMPLATE = r"""
             if (otherItems.length) h += renderGroup("📋 Altro", otherItems);
             h += "</table></div>";
 
-            // ---- QUESTIONARIO ----
             h += "<div class='card'><h3>Questionario di Autovalutazione</h3><table>";
             for (var k = 0; k < s.questionnaire_details.length; k++) {
                 var q = s.questionnaire_details[k];
@@ -1092,14 +987,12 @@ HTML_TEMPLATE = r"""
             }
             h += "</table></div>";
 
-            // ---- AZIONI PRIORITARIE ----
             if (s.recommendations && s.recommendations.length > 0) {
                 h += "<div class='card'><h3>⚠️ Azioni Prioritarie Tecniche</h3><ul style='padding-left:18px;'>";
                 for (var m = 0; m < s.recommendations.length; m++) h += "<li style='margin-bottom:6px;font-size:13px;'>" + s.recommendations[m] + "</li>";
                 h += "</ul></div>";
             }
 
-            // ---- GAP ANALYSIS QUESTIONARIO ----
             if (s.questionnaire_gaps && s.questionnaire_gaps.length > 0) {
                 var weightColors = { "CRITICO": "#fc8181", "ALTO": "#f6ad55", "MEDIO": "#f6e05e", "BASSO": "#63b3ed" };
                 var weightBg    = { "CRITICO": "rgba(252,129,129,0.08)", "ALTO": "rgba(246,173,85,0.08)", "MEDIO": "rgba(246,224,94,0.08)", "BASSO": "rgba(99,179,237,0.08)" };
@@ -1140,7 +1033,6 @@ HTML_TEMPLATE = r"""
                 h += "</div>";
             }
 
-            // ---- NIS2 READINESS SUMMARY ----
             if (s.nis2_readiness) {
                 var nr = s.nis2_readiness;
 
@@ -1174,7 +1066,6 @@ HTML_TEMPLATE = r"""
                 h += "</div>";
             }
 
-            // ---- CTA VERSIONE PORTABLE — moduli specifici per gap ----
             var PORTABLE_MODULES = {
                 "q1":  { icon:"📋", name:"Registrazione & Compliance ACN",   urgency:"LEGALE",
                          desc:"Checklist obblighi ACN, scadenzario registrazione, gestione documentale conforme D.Lgs. 138/2024" },
@@ -1198,7 +1089,6 @@ HTML_TEMPLATE = r"""
                          desc:"Gap analysis NIS2/ISO 27001, roadmap certificazione, gestione report pen-test, remediation plan" },
             };
 
-            // Portable modules for Fornitore NIS2
             var PORTABLE_MODULES_SUPPLIER = {
                 "fq1": { icon:"🔐", name:"Accesso Remoto Sicuro & MFA",        urgency:"URGENTE",
                          desc:"Verifica MFA su tutti gli accessi al cliente, accessi nominativi tracciati, log conservati, revoca automatica accessi inattivi" },
@@ -1225,10 +1115,8 @@ HTML_TEMPLATE = r"""
             var critCount = gaps.filter(function(g){ return g.weight === "CRITICO"; }).length;
             var altoCount = gaps.filter(function(g){ return g.weight === "ALTO"; }).length;
 
-            // Use supplier modules if Fornitore NIS2
             var modMap = (cat === 'Fornitore NIS2') ? PORTABLE_MODULES_SUPPLIER : PORTABLE_MODULES;
 
-            // Collect modules needed for actual gaps
             var neededModules = [];
             var seenKeys = {};
             gaps.forEach(function(g) {
@@ -1237,7 +1125,6 @@ HTML_TEMPLATE = r"""
                 neededModules.push({ mod: modMap[g.key], gap: g });
             });
 
-            // Alert level
             var alertBg, alertBorder, alertIcon, alertTitle, alertIntro;
             if (critCount >= 2 && cat === "Essenziale") {
                 alertBg="rgba(252,129,129,0.1)"; alertBorder="rgba(252,129,129,0.55)";
@@ -1250,7 +1137,7 @@ HTML_TEMPLATE = r"""
             } else if (cat === "Fornitore NIS2") {
                 alertBg="rgba(156,135,226,0.12)"; alertBorder="rgba(156,135,226,0.5)";
                 alertIcon="🔗"; alertTitle="Fornitore NIS2 — il tuo cliente verificherà questi requisiti";
-                alertIntro="Anche se non sei direttamente soggetto NIS2, i tuoi clienti Essenziali o Importanti sono <strong>obbligati dall\'Art. 21.2.d</strong> a verificare la tua sicurezza. Ogni lacuna è un rischio concreto di <strong>perdere il contratto</strong> o essere ritenuto co-responsabile in caso di incidente.";
+                alertIntro="Anche se non sei direttamente soggetto NIS2, i tuoi clienti Essenziali o Importanti sono <strong>obbligati dall'Art. 21.2.d</strong> a verificare la tua sicurezza. Ogni lacuna è un rischio concreto di <strong>perdere il contratto</strong> o essere ritenuto co-responsabile in caso di incidente.";
             } else if (cat === "Fuori ambito") {
                 alertBg="rgba(99,179,237,0.08)"; alertBorder="rgba(99,179,237,0.3)";
                 alertIcon="💡"; alertTitle="NIS2 non obbligatorio — ma i rischi cyber sono reali";
@@ -1287,7 +1174,7 @@ HTML_TEMPLATE = r"""
                 h += "<div style='margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;flex-wrap:gap;'>";
                 h += "<div><p style='font-size:12px;color:#68d391;font-weight:600;margin:0;'>✅ Versione portable include anche:</p>";
                 h += "<p style='font-size:11px;color:#718096;margin:3px 0 0;'>Scan rete interna • endpoint • BitLocker • porte • firewall • antivirus</p></div>";
-                h += "<a href=\'#\' onclick=\'showPortableContact()\' style=\'display:inline-block;padding:10px 20px;background:#185FA5;color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;\'>⬇️ Richiedi la versione portable</a>";
+                h += "<a href='#' onclick='showPortableContact()' style='display:inline-block;padding:10px 20px;background:#185FA5;color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;'>⬇️ Richiedi la versione portable</a>";
                 h += "</div></div>";
             }
             document.getElementById("results").innerHTML = h;
@@ -1327,7 +1214,6 @@ def _clean_company_name(name):
     name = re.sub(r'[\s\-]+', '-', name).strip('-')
     return name
 
-
 def _domain_resolves(domain):
     """Verifica che il dominio risponda ad una query DNS A o CNAME."""
     for record_type in ('A', 'CNAME'):
@@ -1337,7 +1223,6 @@ def _domain_resolves(domain):
         except Exception:
             pass
     return False
-
 
 def find_company_domain(company_name):
     """
@@ -1362,7 +1247,6 @@ def find_company_domain(company_name):
 
     # Fallback immediato
     return base + '.it'
-
 
 @app.route('/api/test-lookup', methods=['POST'])
 def test_lookup():
@@ -1516,7 +1400,6 @@ def _build_otp_html(code):
       </p>
     </div>"""
 
-
 def _send_email_api(to_email, code):
     """
     Invia OTP tramite API HTTP — compatibile con Render free tier.
@@ -1575,6 +1458,41 @@ def _send_email_api(to_email, code):
 
     raise EnvironmentError("Nessun servizio email configurato. Impostare BREVO_API_KEY o SENDGRID_API_KEY su Render.")
 
+# ──────────────────────────────────────────────────────────────────
+# Storage in-memory per OTP (mantiene stato tra restart)
+# Se il server viene riavviato, i codici vengono persi — ok per dev
+# Per produzione: usare Redis o Database
+# ──────────────────────────────────────────────────────────────────
+def otp_cleanup():
+    """Rimuove i codici scaduti per liberare memoria (chiamato in verify)."""
+    now = time.time()
+    expired = [email for email, data in verification_codes.items()
+               if data.get('expiry', 0) < now]
+    for email in expired:
+        verification_codes.pop(email, None)
+
+def otp_get(email):
+    """Legge il record OTP per l'email."""
+    return verification_codes.get(email)
+
+def otp_save(email, code, expiry, req_count, req_time):
+    """Salva il record OTP."""
+    verification_codes[email] = {
+        'code': code,
+        'expiry': expiry,
+        'req_count': req_count,
+        'req_time': req_time,
+        'attempts': 0
+    }
+
+def otp_delete(email):
+    """Cancella il record OTP per l'email."""
+    verification_codes.pop(email, None)
+
+def otp_increment_attempts(email):
+    """Incrementa il contatore dei tentativi per l'email."""
+    if email in verification_codes:
+        verification_codes[email]['attempts'] = verification_codes[email].get('attempts', 0) + 1
 
 @app.route('/api/send-otp', methods=['POST'])
 def send_otp():
@@ -1606,7 +1524,7 @@ def send_otp():
         return jsonify({"success": True,
                         "message": f"[DEV] Codice: {code}", "dev_code": code})
 
-
+@app.route('/api/verify-otp', methods=['POST'])
 def verify_otp():
     email = request.json.get('email', '').strip().lower()
     code  = request.json.get('code', '').strip()
@@ -1635,7 +1553,6 @@ def verify_otp():
     remaining = 5 - (stored.get('attempts', 0) if stored else 5)
     return jsonify({"valid": False,
                     "message": f"Codice non corretto. Tentativi rimanenti: {remaining}"})
-
 
 @app.route('/api/scan', methods=['POST'])
 def scan():
