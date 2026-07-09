@@ -1546,6 +1546,31 @@ def api_verify_otp():
     return jsonify({"valid":False,"message":f"Codice non corretto. Tentativi rimanenti: {remaining}"})
 
 
+@app.route('/api/verify-otp', methods=['POST'])
+def api_verify_otp():
+    email = request.json.get('email','').strip().lower()
+    code  = request.json.get('code','').strip()
+    otp_cleanup()
+    stored = otp_get(email)
+    if not stored:
+        return jsonify({"valid":False,
+                        "message":"Nessun codice attivo. Clicca 'Invia codice OTP' per riceverne uno nuovo."})
+    if time.time() > stored.get('expiry',0):
+        otp_delete(email)
+        return jsonify({"valid":False,"message":"Codice scaduto (10 min). Richiedi un nuovo codice."})
+    otp_increment_attempts(email)
+    stored = otp_get(email)
+    if stored and stored.get('attempts',0) > 5:
+        otp_delete(email)
+        return jsonify({"valid":False,"message":"Troppi tentativi. Richiedi un nuovo codice."})
+    if stored and stored.get('code') == code:
+        otp_delete(email)
+        return jsonify({"valid":True,"message":"Email verificata correttamente."})
+    remaining = max(0, 5 - (stored.get('attempts',0) if stored else 5))
+    return jsonify({"valid":False,
+                    "message":f"Codice non corretto. Tentativi rimanenti: {remaining}"})
+
+
 @app.route('/api/verify-dns', methods=['POST'])
 def api_verify_dns():
     email  = request.json.get('email','')
