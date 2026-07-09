@@ -1,5 +1,7 @@
 from flask import Flask, render_template_string, request, jsonify
 from company_lookup import lookup_company
+from db import init_db, otp_save, otp_get, otp_increment_attempts, otp_delete, otp_cleanup
+init_db()
 from domain_scanner import scan_domain
 from scoring import calculate_nis2_score
 import random
@@ -14,7 +16,7 @@ from email.mime.text import MIMEText
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = 'nis2-web-version-2026'
 
-verification_codes = {}
+# OTP stored in SQLite — see db.py
 
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
@@ -647,7 +649,7 @@ HTML_TEMPLATE = r"""
         }
 
         function showPortableContact() { alert('Contatta il team Ichnobyte per la versione portable.'); }
-        function checkBoth() { if (dnsVerified && otpVerified) document.getElementById("goto-step3").disabled = false; }
+        function checkBoth() { if (otpVerified) { document.getElementById("goto-step3").disabled = false; } }
 
         function checkEmailDomain() {
             var email = document.getElementById("email").value.trim();
@@ -837,14 +839,16 @@ HTML_TEMPLATE = r"""
                     status.innerHTML='✅ <strong>Email verificata correttamente.</strong> Ora esegui la verifica DNS.';
                     otpVerified = true;
                     checkBoth();
-                    // Mostra sezione DNS
+                    // Mostra sezione DNS e avvia automaticamente
                     var dnsSec = document.getElementById("dns-section");
                     if (dnsSec) {
                         dnsSec.style.display = "block";
                         setTimeout(function(){ dnsSec.style.opacity = "1"; }, 50);
-                        dnsSec.scrollIntoView({ behavior:"smooth", block:"start" });
                     }
-                    document.getElementById("goto-step3").disabled = !(dnsVerified && otpVerified);
+                    // Abilita Prosegui subito dopo OTP
+                    document.getElementById("goto-step3").disabled = false;
+                    // DNS parte in background automaticamente
+                    setTimeout(function(){ verifyDNS(); }, 800);
                 } else {
                     status.style.background='rgba(252,129,129,0.08)';
                     status.style.border='1px solid rgba(252,129,129,0.4)';
@@ -1580,70 +1584,57 @@ def send_otp():
     if not email or '@' not in email:
         return jsonify({"success": False, "message": "Indirizzo email non valido"})
 
-    # Rate limiting: max 3 richieste per email ogni 15 minuti
-    existing = verification_codes.get(email, {})
-    if isinstance(existing, dict):
-        req_count = existing.get('req_count', 0)
-        req_time  = existing.get('req_time', 0)
-        if req_count >= 3 and time.time() - req_time < 900:
-            return jsonify({"success": False,
-                            "message": "Troppi tentativi. Attendi 15 minuti."})
+    # Rate limiting da DB (sopravvive ai restart)
+    existing = otp_get(email)
+    if existing and existing.get('req_count', 0) >= 3 and time.time() - existing.get('req_time', 0) < 900:
+        return jsonify({"success": False, "message": "Troppi tentativi. Attendi 15 minuti."})
 
     code    = ''.join(random.choices(string.digits, k=6))
     expiry  = time.time() + 600   # 10 minuti
-    req_cnt = (existing.get('req_count', 0) + 1) if isinstance(existing, dict) else 1
-    verification_codes[email] = {
-        "code":      code,
-        "expiry":    expiry,
-        "attempts":  0,
-        "req_count": req_cnt,
-        "req_time":  time.time()
-    }
+    req_cnt = (existing.get('req_count', 0) + 1) if existing else 1
+    otp_save(email, code, expiry, req_cnt, time.time())
 
-    # Tentativo di invio SMTP
-    api_configured = bool(
-        os.environ.get('BREVO_API_KEY') or os.environ.get('SENDGRID_API_KEY')
-    )
+    api_configured = bool(os.environ.get('BREVO_API_KEY') or os.environ.get('SENDGRID_API_KEY'))
     if api_configured:
         try:
             _send_email_api(email, code)
             return jsonify({"success": True,
                             "message": f"Codice inviato a {email}. Controlla la casella (e lo spam)."})
         except Exception as e:
-            print(f"[OTP] Errore API email: {e}")
-            return jsonify({"success": False,
-                            "message": f"Errore invio email: {str(e)[:120]}"})
+            print(f"[OTP] Errore API: {e}")
+            return jsonify({"success": False, "message": f"Errore invio email: {str(e)[:80]}"})
     else:
-        # Modalità sviluppo — nessuna API configurata
         print(f"[DEV] OTP per {email}: {code}")
         return jsonify({"success": True,
-                        "message": f"[DEV — configurare BREVO_API_KEY su Render] Codice: {code}",
-                        "dev_code": code})
+                        "message": f"[DEV] Codice: {code}", "dev_code": code})
 
 
-@app.route('/api/verify-otp', methods=['POST'])
 def verify_otp():
     email = request.json.get('email', '').strip().lower()
     code  = request.json.get('code', '').strip()
 
-    stored = verification_codes.get(email)
-    if not isinstance(stored, dict):
-        return jsonify({"valid": False, "message": "Nessun codice attivo per questa email. Richiedi un nuovo codice."})
+    otp_cleanup()   # rimuove scaduti
+    stored = otp_get(email)
 
-    if time.time() > stored.get("expiry", 0):
-        verification_codes.pop(email, None)
+    if not stored:
+        return jsonify({"valid": False,
+                        "message": "Nessun codice attivo. Clicca 'Invia codice OTP' per riceverne uno nuovo."})
+
+    if time.time() > stored.get('expiry', 0):
+        otp_delete(email)
         return jsonify({"valid": False, "message": "Codice scaduto (10 min). Richiedi un nuovo codice."})
 
-    stored["attempts"] = stored.get("attempts", 0) + 1
-    if stored["attempts"] > 5:
-        verification_codes.pop(email, None)
+    otp_increment_attempts(email)
+    stored = otp_get(email)   # rilegge con attempts aggiornato
+    if stored and stored.get('attempts', 0) > 5:
+        otp_delete(email)
         return jsonify({"valid": False, "message": "Troppi tentativi errati. Richiedi un nuovo codice."})
 
-    if stored["code"] == code:
-        verification_codes.pop(email, None)   # invalida dopo l'uso
+    if stored and stored.get('code') == code:
+        otp_delete(email)
         return jsonify({"valid": True, "message": "Email verificata correttamente."})
 
-    remaining = 5 - stored["attempts"]
+    remaining = 5 - (stored.get('attempts', 0) if stored else 5)
     return jsonify({"valid": False,
                     "message": f"Codice non corretto. Tentativi rimanenti: {remaining}"})
 
